@@ -36,7 +36,7 @@ cbuffer cbPerFrame
 //--------------------------------------------------------------------------------------
 // Base vertex processing
 //--------------------------------------------------------------------------------------
-VSOut main(VSIn input, uint vid)
+VSOut main(VSIn input, uint vid : SV_VertexID)
 {
 	VSOut output;
 

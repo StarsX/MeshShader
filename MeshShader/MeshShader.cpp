@@ -23,6 +23,8 @@ MeshShaderX::MeshShaderX(uint32_t width, uint32_t height, std::wstring name) :
 	m_frameIndex(0),
 	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
 	m_scissorRect(0, 0, static_cast<long>(width), static_cast<long>(height)),
+	m_isMSSupported(false),
+	m_useMeshShader(true),
 	m_showFPS(true),
 	m_pausing(false),
 	m_tracking(false),
@@ -82,13 +84,18 @@ void MeshShaderX::LoadPipeline()
 	{
 		dxgiAdapter = nullptr;
 		ThrowIfFailed(factory->EnumAdapters1(i, &dxgiAdapter));
-		hr = D3D12CreateDevice(dxgiAdapter.get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device));
+		hr = D3D12CreateDevice(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device));
 	}
 
 	dxgiAdapter->GetDesc1(&dxgiAdapterDesc);
 	if (dxgiAdapterDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
 		m_title += dxgiAdapterDesc.VendorId == 0x1414 && dxgiAdapterDesc.DeviceId == 0x8c ? L" (WARP)" : L" (Software)";
 	ThrowIfFailed(hr);
+
+	D3D12_FEATURE_DATA_D3D12_OPTIONS7 featureData = {};
+	hr = m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &featureData, sizeof(featureData));
+	if (SUCCEEDED(hr) && featureData.MeshShaderTier) m_isMSSupported = true;
+	m_useMeshShader = m_useMeshShader && m_isMSSupported;
 
 	// Create the command queue.
 	N_RETURN(m_device->GetCommandQueue(m_commandQueue, CommandListType::DIRECT, CommandQueueFlag::NONE), ThrowIfFailed(E_FAIL));
@@ -148,7 +155,7 @@ void MeshShaderX::LoadAssets()
 	/// Resolve pso mismatch by using'D24_UNORM_S8_UINT'
 	/// </Hard Code>
 	if (!m_renderer->Init(pCommandList, m_width, m_height, m_renderTargets[0]->GetFormat(),
-		uploaders, m_meshFileName.c_str(), m_meshPosScale)) ThrowIfFailed(E_FAIL);
+		uploaders, m_meshFileName.c_str(), m_meshPosScale, m_isMSSupported)) ThrowIfFailed(E_FAIL);
 
 	// Close the command list and execute it to begin the initial GPU setup.
 	ThrowIfFailed(pCommandList->Close());
@@ -234,6 +241,9 @@ void MeshShaderX::OnKeyUp(uint8_t key)
 		break;
 	case 0x70:	//case VK_F1:
 		m_showFPS = !m_showFPS;
+		break;
+	case 'P':
+		m_useMeshShader = !m_useMeshShader && m_isMSSupported;
 		break;
 	}
 }
@@ -343,7 +353,7 @@ void MeshShaderX::PopulateCommandList()
 	pCommandList->ClearRenderTargetView(m_renderTargets[m_frameIndex]->GetRTV(), clearColor);
 
 	// Rendering
-	m_renderer->Render(pCommandList, m_frameIndex, m_renderTargets[m_frameIndex]->GetRTV());
+	m_renderer->Render(pCommandList, m_frameIndex, m_renderTargets[m_frameIndex]->GetRTV(), m_useMeshShader);
 
 	// Indicate that the back buffer will now be used to present.
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(&barrier, ResourceState::PRESENT);
@@ -406,7 +416,7 @@ double MeshShaderX::CalculateFrameStats(float* pTimeStep)
 		windowText << L"    fps: ";
 		if (m_showFPS) windowText << setprecision(2) << fixed << fps;
 		else windowText << L"[F1]";
-		//windowText << L"    [R] " << (m_useRayTracing ? "Ray tracing" : "Shadow map array");
+		windowText << L"    [P] " << (m_useMeshShader ? "Mesh-shader pipeline" : "IA-graphics pipeline");
 		SetCustomWindowText(windowText.str().c_str());
 	}
 

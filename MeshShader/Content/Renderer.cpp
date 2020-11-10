@@ -6,7 +6,7 @@
 #include "Optional/XUSGObjLoader.h"
 #include "Renderer.h"
 
-#define GROUP_SIZE	96
+#define GROUP_SIZE 96
 
 using namespace std;
 using namespace DirectX;
@@ -28,7 +28,7 @@ Renderer::~Renderer()
 }
 
 bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, Format rtFormat,
-	vector<Resource>& uploaders, const char* fileName, const XMFLOAT4& posScale)
+	vector<Resource>& uploaders, const char* fileName, const XMFLOAT4& posScale, bool isMSSupported)
 {
 	m_viewport.x = static_cast<float>(width);
 	m_viewport.y = static_cast<float>(height);
@@ -45,8 +45,9 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	N_RETURN(m_depth->Create(m_device, width, height), false);
 
 	// Create pipelines
-	N_RETURN(createPipelineLayouts(), false);
-	N_RETURN(createPipelines(rtFormat, m_depth->GetFormat()), false);
+	N_RETURN(createInputLayout(), false);
+	N_RETURN(createPipelineLayouts(isMSSupported), false);
+	N_RETURN(createPipelines(rtFormat, m_depth->GetFormat(), isMSSupported), false);
 	N_RETURN(createDescriptorTables(), false);
 
 	// Extract boundary
@@ -106,7 +107,8 @@ void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOA
 	}
 }
 
-void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex, const Descriptor& rtv)
+void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex,
+	const Descriptor& rtv, bool useMeshShader)
 {
 	const DescriptorPool descriptorPools[] =
 	{
@@ -118,17 +120,6 @@ void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex, 
 	// Clear depth
 	pCommandList->ClearDepthStencilView(m_depth->GetDSV(), ClearFlag::DEPTH, 1.0f);
 
-	// Set descriptor tables
-	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[MESH_SHADER_LAYOUT]);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
-	pCommandList->SetGraphicsDescriptorTable(INDEX_BUFFER, m_srvTables[SRV_TABLE_IB]);
-	pCommandList->SetGraphicsDescriptorTable(VERTEX_BUFFER, m_srvTables[SRV_TABLE_VB]);
-	pCommandList->SetGraphicsDescriptorTable(UAV_BUFFER, m_uavTable);
-
-	// Set pipeline state
-	pCommandList->SetPipelineState(m_pipelines[MESH_SHADER_BASE]);
-
 	// Set viewport
 	Viewport viewport(0.0f, 0.0f, m_viewport.x, m_viewport.y);
 	RectRange scissorRect(0, 0, static_cast<long>(m_viewport.x), static_cast<long>(m_viewport.y));
@@ -137,13 +128,8 @@ void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex, 
 
 	pCommandList->OMSetRenderTargets(1, &rtv, &m_depth->GetDSV());
 
-	// Record commands.
-	for (auto i = 0u; i < NUM_MESH; ++i)
-	{
-		const uint32_t perObjConsts[] = { i, m_numIndices[i] / 3 };
-		pCommandList->SetGraphics32BitConstants(CONSTANTS, 2, perObjConsts);
-		pCommandList->DispatchMesh(DIV_UP(m_numIndices[i], GROUP_SIZE), 1, 1);
-	}
+	if (useMeshShader) renderMS(pCommandList, frameIndex);
+	else renderVS(pCommandList, frameIndex);
 }
 
 bool Renderer::createVB(XUSG::CommandList* pCommandList, uint32_t numVert,
@@ -186,7 +172,7 @@ bool Renderer::createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 	return true;
 }
 
-/*bool Renderer::createInputLayout()
+bool Renderer::createInputLayout()
 {
 	// Define the vertex input layout.
 	InputElementTable inputElementDescs =
@@ -198,11 +184,12 @@ bool Renderer::createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 	X_RETURN(m_inputLayout, m_graphicsPipelineCache->CreateInputLayout(inputElementDescs), false);
 
 	return true;
-}*/
+}
 
-bool Renderer::createPipelineLayouts()
+bool Renderer::createPipelineLayouts(bool isMSSupported)
 {
 	// Mesh-shader
+	if (isMSSupported)
 	{
 		// Get pipeline layout
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
@@ -215,28 +202,56 @@ bool Renderer::createPipelineLayouts()
 		pipelineLayout->SetShaderStage(INDEX_BUFFER, Shader::MS);
 		pipelineLayout->SetShaderStage(VERTEX_BUFFER, Shader::MS);
 		pipelineLayout->SetShaderStage(UAV_BUFFER, Shader::MS);
-		X_RETURN(m_pipelineLayouts[MESH_SHADER_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
-			PipelineLayoutFlag::NONE, L"MeshShaderLayout"), false);
+		X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
+			PipelineLayoutFlag::NONE, L"MSBasePassLayout"), false);
+	}
+
+	// Vertex-shader
+	{
+		// Get pipeline layout
+		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::VS);
+		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 1, 0, DescriptorFlag::DATA_STATIC);
+		pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t[2]), 2);
+		X_RETURN(m_pipelineLayouts[BASEPASS_VS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
+			PipelineLayoutFlag::ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, L"VSBasePassLayout"), false);
 	}
 
 	return true;
 }
 
-bool Renderer::createPipelines(Format rtFormat, Format dsFormat)
+bool Renderer::createPipelines(Format rtFormat, Format dsFormat, bool isMSSupported)
 {
+	N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, PS_SIMPLE, L"PSSimpleShade.cso"), false);
+
 	// Mesh-shader
+	if (isMSSupported)
 	{
 		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::MS, MS_BASEPASS, L"MSBasePass.cso"), false);
-		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, PS_SIMPLE, L"PSSimpleShade.cso"), false);
 
 		const auto state = MeshShader::State::MakeUnique();
-		state->SetPipelineLayout(m_pipelineLayouts[MESH_SHADER_LAYOUT]);
+		state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
 		state->SetShader(Shader::Stage::MS, m_shaderPool->GetShader(Shader::Stage::MS, MS_BASEPASS));
 		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
 		state->OMSetNumRenderTargets(1);
 		state->OMSetRTVFormat(0, rtFormat);
 		state->OMSetDSVFormat(dsFormat);
-		X_RETURN(m_pipelines[MESH_SHADER_BASE], state->GetPipeline(*m_meshShaderPipelineCache, L"MeshShaderBase"), false);
+		X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(*m_meshShaderPipelineCache, L"MeshShaderBasePass"), false);
+	}
+
+	// Vertex-shader
+	{
+		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, VS_BASEPASS, L"VSBasePass.cso"), false);
+		
+		const auto state = Graphics::State::MakeUnique();
+		state->IASetInputLayout(m_inputLayout);
+		state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_VS_LAYOUT]);
+		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, VS_BASEPASS));
+		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
+		state->OMSetNumRenderTargets(1);
+		state->OMSetRTVFormat(0, rtFormat);
+		state->OMSetDSVFormat(dsFormat);
+		X_RETURN(m_pipelines[BASEPASS_VS], state->GetPipeline(*m_graphicsPipelineCache, L"VertexShaderBasePass"), false);
 	}
 
 	return true;
@@ -280,4 +295,48 @@ bool Renderer::createDescriptorTables()
 	}
 
 	return true;
+}
+
+void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex)
+{
+	// Set descriptor tables
+	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
+	pCommandList->SetGraphicsDescriptorTable(INDEX_BUFFER, m_srvTables[SRV_TABLE_IB]);
+	pCommandList->SetGraphicsDescriptorTable(VERTEX_BUFFER, m_srvTables[SRV_TABLE_VB]);
+	pCommandList->SetGraphicsDescriptorTable(UAV_BUFFER, m_uavTable);
+
+	// Set pipeline state
+	pCommandList->SetPipelineState(m_pipelines[BASEPASS_MS]);
+
+	// Record commands.
+	for (auto i = 0u; i < NUM_MESH; ++i)
+	{
+		const uint32_t perObjConsts[] = { i, m_numIndices[i] / 3 };
+		pCommandList->SetGraphics32BitConstants(CONSTANTS, 2, perObjConsts);
+		pCommandList->DispatchMesh(DIV_UP(m_numIndices[i], GROUP_SIZE), 1, 1);
+	}
+}
+
+void Renderer::renderVS(CommandList* pCommandList, uint32_t frameIndex)
+{
+	// Set descriptor tables
+	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_VS_LAYOUT]);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
+
+	// Set pipeline state
+	pCommandList->SetPipelineState(m_pipelines[BASEPASS_VS]);
+
+	// Record commands.
+	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
+	for (auto i = 0u; i < NUM_MESH; ++i)
+	{
+		const uint32_t perObjConsts[] = { i, m_numIndices[i] / 3 };
+		pCommandList->SetGraphics32BitConstants(CONSTANTS, 2, perObjConsts);
+		pCommandList->IASetVertexBuffers(0, 1, &m_vertexBuffers[i]->GetVBV());
+		pCommandList->IASetIndexBuffer(m_indexBuffers[i]->GetIBV());
+		pCommandList->DrawIndexed(m_numIndices[i], 1, 0, 0, 0);
+	}
 }

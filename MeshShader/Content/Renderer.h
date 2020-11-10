@@ -14,17 +14,19 @@ public:
 
 	bool Init(XUSG::CommandList* pCommandList, uint32_t width, uint32_t height,
 		XUSG::Format rtFormat, std::vector<XUSG::Resource>& uploaders,
-		const char* fileName, const DirectX::XMFLOAT4& posScale);
+		const char* fileName, const DirectX::XMFLOAT4& posScale, bool isMSSupported);
 
 	void UpdateFrame(uint32_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
-	void Render(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex, const XUSG::Descriptor& rtv);
+	void Render(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex,
+		const XUSG::Descriptor& rtv, bool useMeshShader = true);
 
 	static const uint32_t FrameCount = 3;
 
 protected:
 	enum PipelineLayoutIndex : uint8_t
 	{
-		MESH_SHADER_LAYOUT,
+		BASEPASS_MS_LAYOUT,
+		BASEPASS_VS_LAYOUT,
 
 		NUM_PIPELINE_LAYOUT
 	};
@@ -42,7 +44,8 @@ protected:
 
 	enum PipelineIndex : uint8_t
 	{
-		MESH_SHADER_BASE,
+		BASEPASS_MS,
+		BASEPASS_VS,
 
 		NUM_PIPELINE
 	};
@@ -53,6 +56,11 @@ protected:
 		SRV_TABLE_VB,
 
 		NUM_SRV_TABLE
+	};
+
+	enum VertexShaderID : uint8_t
+	{
+		VS_BASEPASS
 	};
 
 	enum MeshShaderID : uint8_t
@@ -76,14 +84,18 @@ protected:
 		uint32_t stride, const uint8_t* pData, std::vector<XUSG::Resource>& uploaders);
 	bool createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 		const uint32_t* pData, std::vector<XUSG::Resource>& uploaders);
-	bool createPipelineLayouts();
-	bool createPipelines(XUSG::Format rtFormat, XUSG::Format dsFormat);
+	bool createInputLayout();
+	bool createPipelineLayouts(bool isMSSupported);
+	bool createPipelines(XUSG::Format rtFormat, XUSG::Format dsFormat, bool isMSSupported);
 	bool createDescriptorTables();
+	void renderMS(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex);
+	void renderVS(XUSG::CommandList* pCommandList, uint32_t frameIndex);
 
 	const static uint32_t NUM_MESH = 1;
 
 	XUSG::Device m_device;
 
+	XUSG::InputLayout			m_inputLayout;
 	XUSG::PipelineLayout		m_pipelineLayouts[NUM_PIPELINE_LAYOUT];
 	XUSG::Pipeline				m_pipelines[NUM_PIPELINE];
 

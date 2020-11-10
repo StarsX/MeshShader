@@ -54,6 +54,8 @@ private:
 	XUSG::CommandAllocator	m_commandAllocators[FrameCount];
 	XUSG::CommandQueue		m_commandQueue;
 
+	bool m_isMSSupported;
+
 	XUSG::Device m_device;
 	XUSG::RenderTarget::uptr m_renderTargets[FrameCount];
 	XUSG::Ultimate::CommandList::uptr m_commandList;
@@ -72,6 +74,7 @@ private:
 	uint64_t	m_fenceValues[FrameCount];
 
 	// Application state
+	bool		m_useMeshShader;
 	bool		m_showFPS;
 	bool		m_pausing;
 	StepTimer	m_timer;
