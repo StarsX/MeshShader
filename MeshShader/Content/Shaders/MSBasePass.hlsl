@@ -28,8 +28,7 @@ void main(//uint DTid : SV_DispatchThreadID,
 	const uint localIdxBase = uniqueIdxBase + primCount * 3;
 	const uint vertCountIdx = localIdxBase + primCount;
 
-	const RWBuffer<uint> meshletIdxBuffer = g_meshletIdxBuffers[g_meshIdx];
-	const uint vertexCount = meshletIdxBuffer[vertCountIdx];
+	const uint vertexCount = g_meshletIdxBuffer[vertCountIdx];
 	//DeviceMemoryBarrierWithGroupSync();
 	
 	SetMeshOutputCounts(vertexCount, primCount);
@@ -46,15 +45,15 @@ void main(//uint DTid : SV_DispatchThreadID,
 		if (GTid < vertexCount)
 		{
 			// Vertex processing
-			const uint vid = meshletIdxBuffer[uniqueIdxBase + GTid];
-			const VSIn input = g_vertexBuffers[g_meshIdx][vid];
+			const uint vid = g_meshletIdxBuffer[uniqueIdxBase + GTid];
+			const VSIn input = g_vertexBuffer[vid];
 			verts[GTid] = VSMain(input, vid);
 		}
 
 		if (GTid < primCount)
 		{
 			// Index processing
-			const uint prim = meshletIdxBuffer[localIdxBase + GTid];
+			const uint prim = g_meshletIdxBuffer[localIdxBase + GTid];
 			tris[GTid] = uint3(prim & 0x3FF, (prim >> 10) & 0x3FF, (prim >> 20) & 0x3FF);
 		}
 	}

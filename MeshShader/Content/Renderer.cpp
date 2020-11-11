@@ -50,10 +50,6 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	N_RETURN(createPipelines(rtFormat, m_depth->GetFormat(), isMSSupported), false);
 	N_RETURN(createDescriptorTables(), false);
 
-	// Extract boundary
-	const auto center = objLoader.GetCenter();
-	m_bound = XMFLOAT4(center.x, center.y, center.z, objLoader.GetRadius());
-
 	m_cbMatrices = ConstantBuffer::MakeUnique();
 	N_RETURN(m_cbMatrices->Create(m_device, sizeof(CBMatrices), FrameCount, nullptr, MemoryType::UPLOAD, L"CBMatrices"), false);
 	m_cbvMatStride = static_cast<uint32_t>(reinterpret_cast<uint8_t*>(m_cbMatrices->Map(1)) - reinterpret_cast<uint8_t*>(m_cbMatrices->Map()));
@@ -62,25 +58,17 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	N_RETURN(m_cbPerFrame->Create(m_device, sizeof(CBMatrices), FrameCount, nullptr, MemoryType::UPLOAD, L"CBPerFrame"), false);
 	m_cbvPFStride = static_cast<uint32_t>(reinterpret_cast<uint8_t*>(m_cbPerFrame->Map(1)) - reinterpret_cast<uint8_t*>(m_cbPerFrame->Map()));
 
-	// Initialize world transform
-	const auto world = XMMatrixIdentity();
-	XMStoreFloat4x4(&m_world, XMMatrixTranspose(world));
-
 	return true;
 }
 
 void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOAT3& eyePt)
 {
-	m_eyePt = eyePt;
-
 	// General matrices
 	//const auto world = XMMatrixScaling(m_bound.w, m_bound.w, m_bound.w) *
 		//XMMatrixTranslation(m_bound.x, m_bound.y, m_bound.z);
 	const auto world = XMMatrixScaling(m_posScale.w, m_posScale.w, m_posScale.w) *
 		XMMatrixTranslation(m_posScale.x, m_posScale.y, m_posScale.z);
 	const auto worldViewProj = world * viewProj;
-	XMStoreFloat4x4(&m_world, XMMatrixTranspose(world));
-	XMStoreFloat4x4(&m_worldViewProj, XMMatrixTranspose(worldViewProj));
 
 	// Screen space matrices
 	const auto toScreen = XMMATRIX
@@ -93,7 +81,7 @@ void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOA
 	const auto worldToScreen = viewProj * toScreen;
 	const auto screenToWorld = XMMatrixInverse(nullptr, worldToScreen);
 
-	// VS ray tracing
+	// Constant buffers
 	{
 		const auto pCbData = reinterpret_cast<CBMatrices*>(m_cbMatrices->Map(frameIndex));
 		XMStoreFloat4x4(&pCbData->WorldViewProj, XMMatrixTranspose(worldViewProj));
@@ -103,7 +91,7 @@ void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOA
 
 	{
 		const auto pCbData = reinterpret_cast<XMFLOAT3*>(m_cbPerFrame->Map(frameIndex));
-		*pCbData = m_eyePt;
+		*pCbData = eyePt;
 	}
 }
 
@@ -194,14 +182,11 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 		// Get pipeline layout
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
-		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 1, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t[2]), 2);
-		pipelineLayout->SetRange(INDEX_BUFFER, DescriptorType::SRV, NUM_MESH, 0, 0);
-		pipelineLayout->SetRange(VERTEX_BUFFER, DescriptorType::SRV, NUM_MESH, 0, 1);
-		pipelineLayout->SetRange(UAV_BUFFER, DescriptorType::UAV, NUM_MESH, 0);
-		pipelineLayout->SetShaderStage(INDEX_BUFFER, Shader::MS);
-		pipelineLayout->SetShaderStage(VERTEX_BUFFER, Shader::MS);
-		pipelineLayout->SetShaderStage(UAV_BUFFER, Shader::MS);
+		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
+		pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
+		pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0);
+		pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 1, 0);
+		pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
 		X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
 			PipelineLayoutFlag::NONE, L"MSBasePassLayout"), false);
 	}
@@ -211,8 +196,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 		// Get pipeline layout
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::VS);
-		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 1, 0, DescriptorFlag::DATA_STATIC);
-		pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t[2]), 2);
+		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
 		X_RETURN(m_pipelineLayouts[BASEPASS_VS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
 			PipelineLayoutFlag::ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, L"VSBasePassLayout"), false);
 	}
@@ -259,31 +243,18 @@ bool Renderer::createPipelines(Format rtFormat, Format dsFormat, bool isMSSuppor
 
 bool Renderer::createDescriptorTables()
 {
-	// Index buffer SRVs
+	// Index and vertex buffer SRVs, and meshlet-index UAVs
+	for (auto i = 0u; i < NUM_MESH; ++i)
 	{
-		Descriptor descriptors[NUM_MESH];
-		for (auto i = 0u; i < NUM_MESH; ++i) descriptors[i] = m_indexBuffers[i]->GetSRV();
+		const Descriptor descriptors[] =
+		{
+			m_indexBuffers[i]->GetSRV(),
+			m_vertexBuffers[i]->GetSRV(),
+			m_meshletIdxBuffers[i]->GetUAV()
+		};
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
-		X_RETURN(m_srvTables[SRV_TABLE_IB], descriptorTable->GetCbvSrvUavTable(*m_descriptorTableCache), false);
-	}
-
-	// Vertex buffer SRVs
-	{
-		Descriptor descriptors[NUM_MESH];
-		for (auto i = 0u; i < NUM_MESH; ++i) descriptors[i] = m_vertexBuffers[i]->GetSRV();
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
-		X_RETURN(m_srvTables[SRV_TABLE_VB], descriptorTable->GetCbvSrvUavTable(*m_descriptorTableCache), false);
-	}
-
-	// Meshlet-index UAVs
-	{
-		Descriptor descriptors[NUM_MESH];
-		for (auto i = 0u; i < NUM_MESH; ++i) descriptors[i] = m_meshletIdxBuffers[i]->GetUAV();
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
-		X_RETURN(m_uavTable, descriptorTable->GetCbvSrvUavTable(*m_descriptorTableCache), false);
+		X_RETURN(m_srvUavTables[i], descriptorTable->GetCbvSrvUavTable(*m_descriptorTableCache), false);
 	}
 
 	// Create the sampler table
@@ -303,9 +274,6 @@ void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
 	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
 	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
-	pCommandList->SetGraphicsDescriptorTable(INDEX_BUFFER, m_srvTables[SRV_TABLE_IB]);
-	pCommandList->SetGraphicsDescriptorTable(VERTEX_BUFFER, m_srvTables[SRV_TABLE_VB]);
-	pCommandList->SetGraphicsDescriptorTable(UAV_BUFFER, m_uavTable);
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[BASEPASS_MS]);
@@ -313,8 +281,8 @@ void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex
 	// Record commands.
 	for (auto i = 0u; i < NUM_MESH; ++i)
 	{
-		const uint32_t perObjConsts[] = { i, m_numIndices[i] / 3 };
-		pCommandList->SetGraphics32BitConstants(CONSTANTS, 2, perObjConsts);
+		pCommandList->SetGraphics32BitConstant(CONSTANTS, m_numIndices[i] / 3);
+		pCommandList->SetGraphicsDescriptorTable(BUFFERS, m_srvUavTables[i]);
 		pCommandList->DispatchMesh(DIV_UP(m_numIndices[i], GROUP_SIZE), 1, 1);
 	}
 }
@@ -333,8 +301,6 @@ void Renderer::renderVS(CommandList* pCommandList, uint32_t frameIndex)
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
 	for (auto i = 0u; i < NUM_MESH; ++i)
 	{
-		const uint32_t perObjConsts[] = { i, m_numIndices[i] / 3 };
-		pCommandList->SetGraphics32BitConstants(CONSTANTS, 2, perObjConsts);
 		pCommandList->IASetVertexBuffers(0, 1, &m_vertexBuffers[i]->GetVBV());
 		pCommandList->IASetIndexBuffer(m_indexBuffers[i]->GetIBV());
 		pCommandList->DrawIndexed(m_numIndices[i], 1, 0, 0, 0);

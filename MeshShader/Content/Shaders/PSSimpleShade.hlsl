@@ -11,7 +11,7 @@ struct PSIn
 	float3	Nrm		: NORMAL;
 };
 
-cbuffer cbPerFrame : register (b1)
+cbuffer cbPerFrame
 {
 	float3 g_eyePt;
 };

@@ -36,9 +36,7 @@ protected:
 		CBV_MATRICES,
 		CBV_PER_FRAME,
 		CONSTANTS,
-		INDEX_BUFFER,
-		VERTEX_BUFFER,
-		UAV_BUFFER,
+		BUFFERS,
 		SAMPLER
 	};
 
@@ -99,9 +97,7 @@ protected:
 	XUSG::PipelineLayout		m_pipelineLayouts[NUM_PIPELINE_LAYOUT];
 	XUSG::Pipeline				m_pipelines[NUM_PIPELINE];
 
-	XUSG::DescriptorTable		m_srvTables[NUM_SRV_TABLE];
-	XUSG::DescriptorTable		m_srvUavTable;
-	XUSG::DescriptorTable		m_uavTable;
+	XUSG::DescriptorTable		m_srvUavTables[NUM_MESH];
 	XUSG::DescriptorTable		m_samplerTable;
 
 	XUSG::VertexBuffer::uptr	m_vertexBuffers[NUM_MESH];
@@ -114,10 +110,6 @@ protected:
 	uint32_t					m_cbvMatStride;
 	uint32_t					m_cbvPFStride;
 
-	DirectX::XMFLOAT3			m_eyePt;
-	DirectX::XMFLOAT4X4			m_world;
-	DirectX::XMFLOAT4X4			m_worldViewProj;
-
 	XUSG::ShaderPool::uptr					m_shaderPool;
 	XUSG::Graphics::PipelineCache::uptr		m_graphicsPipelineCache;
 	XUSG::Compute::PipelineCache::uptr		m_computePipelineCache;
@@ -126,7 +118,6 @@ protected:
 	XUSG::DescriptorTableCache::uptr		m_descriptorTableCache;
 
 	DirectX::XMFLOAT2				m_viewport;
-	DirectX::XMFLOAT4				m_bound;
 	DirectX::XMFLOAT4				m_posScale;
 	uint32_t						m_numIndices[NUM_MESH];
 };

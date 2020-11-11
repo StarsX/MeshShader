@@ -5,9 +5,8 @@
 //--------------------------------------------------------------------------------------
 // Constant buffer
 //--------------------------------------------------------------------------------------
-cbuffer cbPerObject : register (b2)
+cbuffer cbPerObject
 {
-	uint g_meshIdx;
 	uint g_primCount;
 };
 
@@ -15,35 +14,33 @@ cbuffer cbPerObject : register (b2)
 // Texture and buffers
 //--------------------------------------------------------------------------------------
 // IA buffers
-Buffer<uint>			g_indexBuffers[]	: register(t0, space0);
-StructuredBuffer<VSIn>	g_vertexBuffers[]	: register(t0, space1);
-RWBuffer<uint>		g_meshletIdxBuffers[]	: register(u0);
+Buffer<uint>			g_indexBuffer;
+StructuredBuffer<VSIn>	g_vertexBuffer;
+RWBuffer<uint>		g_meshletIdxBuffer;
 
 void GenerateMeshlet(uint GTid, uint Gid, uint primCount, uint localIdxBase, uint uniqueIdxBase, uint vertCountIdx)
 {
 	// Generate meshlet
-	const RWBuffer<uint> meshletIdxBuffer = g_meshletIdxBuffers[g_meshIdx];
-	const Buffer<uint> indexBuffers = g_indexBuffers[g_meshIdx];
 	const uint idxBase = Gid * MAX_VERT_COUNT;
-	const uint vid = indexBuffers[idxBase + GTid];
+	const uint vid = g_indexBuffer[idxBase + GTid];
 
 	// Seek existing index
 	for (uint i = 0; i < GTid; ++i)
-		if (vid == indexBuffers[idxBase + i]) break;
+		if (vid == g_indexBuffer[idxBase + i]) break;
 
 	const bool isUnique = (i == GTid);
 	uint appendIdx = 0;
 	if (isUnique)
 	{
 		// Record the local index of the unique vertex thread
-		InterlockedAdd(meshletIdxBuffer[vertCountIdx], 1, appendIdx);
-		meshletIdxBuffer[uniqueIdxBase + GTid] = appendIdx;
+		InterlockedAdd(g_meshletIdxBuffer[vertCountIdx], 1, appendIdx);
+		g_meshletIdxBuffer[uniqueIdxBase + GTid] = appendIdx;
 	}
 
 	DeviceMemoryBarrierWithGroupSync();
 
 	// Broadcast the local index to the non-unique vertex thread
-	if (!isUnique) meshletIdxBuffer[uniqueIdxBase + GTid] = meshletIdxBuffer[uniqueIdxBase + i];
+	if (!isUnique) g_meshletIdxBuffer[uniqueIdxBase + GTid] = g_meshletIdxBuffer[uniqueIdxBase + i];
 
 	DeviceMemoryBarrierWithGroupSync();
 
@@ -53,13 +50,13 @@ void GenerateMeshlet(uint GTid, uint Gid, uint primCount, uint localIdxBase, uin
 		uint3 tri;
 		[unroll]
 		for (uint n = 0; n < 3; ++n)
-			tri[n] = meshletIdxBuffer[uniqueIdxBase + GTid * 3 + n];
-		meshletIdxBuffer[localIdxBase + GTid] = tri.x | (tri.y << 10) | (tri.z << 20);
+			tri[n] = g_meshletIdxBuffer[uniqueIdxBase + GTid * 3 + n];
+		g_meshletIdxBuffer[localIdxBase + GTid] = tri.x | (tri.y << 10) | (tri.z << 20);
 	}
 
 	DeviceMemoryBarrierWithGroupSync();
 
 	// Ouput unique vertex index
-	if (isUnique) meshletIdxBuffer[uniqueIdxBase + appendIdx] = vid;
+	if (isUnique) g_meshletIdxBuffer[uniqueIdxBase + appendIdx] = vid;
 	//DeviceMemoryBarrierWithGroupSync();
 }

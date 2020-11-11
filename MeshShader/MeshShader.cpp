@@ -14,7 +14,6 @@
 
 using namespace std;
 using namespace XUSG;
-//using namespace XUSG::RayTracing;
 
 static const float g_fovAngleY = XM_PIDIV4;
 
