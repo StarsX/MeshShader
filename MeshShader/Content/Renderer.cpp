@@ -8,7 +8,7 @@
 #include "D3D12MeshletGenerator.h"
 
 #define GROUP_SIZE 96
-#define ITER 1000
+#define ITER 1
 
 using namespace std;
 using namespace DirectX;
@@ -41,9 +41,8 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	if (!objLoader.Import(fileName, true, true)) return false;
 	N_RETURN(createVB(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(), uploaders), false);
 	N_RETURN(createIB(pCommandList, objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
-	if (isMSSupported)
-		N_RETURN(createMeshlets(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(),
-			objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
+	N_RETURN(createMeshlets(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(),
+		objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
 
 	// Create a depth buffer
 	m_depth = DepthStencil::MakeUnique();
