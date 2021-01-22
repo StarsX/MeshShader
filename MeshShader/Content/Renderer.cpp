@@ -5,8 +5,10 @@
 #include "SharedConst.h"
 #include "Optional/XUSGObjLoader.h"
 #include "Renderer.h"
+#include "D3D12MeshletGenerator.h"
 
 #define GROUP_SIZE 96
+#define ITER 1000
 
 using namespace std;
 using namespace DirectX;
@@ -39,6 +41,9 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	if (!objLoader.Import(fileName, true, true)) return false;
 	N_RETURN(createVB(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(), uploaders), false);
 	N_RETURN(createIB(pCommandList, objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
+	if (isMSSupported)
+		N_RETURN(createMeshlets(pCommandList, objLoader.GetNumVertices(), objLoader.GetVertexStride(), objLoader.GetVertices(),
+			objLoader.GetNumIndices(), objLoader.GetIndices(), uploaders), false);
 
 	// Create a depth buffer
 	m_depth = DepthStencil::MakeUnique();
@@ -96,7 +101,7 @@ void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOA
 }
 
 void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex,
-	const Descriptor& rtv, bool useMeshShader)
+	const Descriptor& rtv, PipelineType pipelineType)
 {
 	const DescriptorPool descriptorPools[] =
 	{
@@ -116,20 +121,29 @@ void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex,
 
 	pCommandList->OMSetRenderTargets(1, &rtv, &m_depth->GetDSV());
 
-	if (useMeshShader) renderMS(pCommandList, frameIndex);
-	else renderVS(pCommandList, frameIndex);
+	switch (pipelineType)
+	{
+	case NAIVE_MS:
+		renderMS(pCommandList, frameIndex);
+		break;
+	case PREGEN_MS:
+		renderMeshlets(pCommandList, frameIndex);
+		break;
+	default:
+		renderVS(pCommandList, frameIndex);
+	}
 }
 
-bool Renderer::createVB(XUSG::CommandList* pCommandList, uint32_t numVert,
+bool Renderer::createVB(XUSG::CommandList* pCommandList, uint32_t numVerts,
 	uint32_t stride, const uint8_t* pData, vector<Resource>& uploaders)
 {
 	auto& vertexBuffer = m_vertexBuffers[0];
 	vertexBuffer = VertexBuffer::MakeUnique();
-	N_RETURN(vertexBuffer->Create(m_device, numVert, stride,
+	N_RETURN(vertexBuffer->Create(m_device, numVerts, stride,
 		ResourceFlag::NONE, MemoryType::DEFAULT), false);
 	uploaders.push_back(nullptr);
 
-	N_RETURN(vertexBuffer->Upload(pCommandList, uploaders.back(), pData, stride * numVert, 0,
+	N_RETURN(vertexBuffer->Upload(pCommandList, uploaders.back(), pData, stride * numVerts, 0,
 		ResourceState::VERTEX_AND_CONSTANT_BUFFER | ResourceState::NON_PIXEL_SHADER_RESOURCE), false);
 
 	return true;
@@ -150,12 +164,87 @@ bool Renderer::createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 	N_RETURN(indexBuffer->Upload(pCommandList, uploaders.back(), pData, byteWidth, 0,
 		ResourceState::INDEX_BUFFER | ResourceState::NON_PIXEL_SHADER_RESOURCE), false);
 
-	auto& meshletIdxBuffer = m_meshletIdxBuffers[0];
-	meshletIdxBuffer = TypedBuffer::MakeUnique();
-	const auto numGroups = DIV_UP(numIndices, GROUP_SIZE);
-	const auto numPrimitives = numIndices / 3;
-	N_RETURN(meshletIdxBuffer->Create(m_device, numIndices + numPrimitives + numGroups, sizeof(uint32_t),
-		Format::R32_UINT, ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
+	{
+		auto& meshletBuffer = m_meshletBuffers[0][NAIVE_MS];
+		meshletBuffer = StructuredBuffer::MakeUnique();
+		const auto numMeshlets = DIV_UP(numIndices, GROUP_SIZE);
+		const uint32_t numMembers = sizeof(Meshlet) / sizeof(uint32_t);
+		N_RETURN(meshletBuffer->Create(m_device, numMembers * numMeshlets, sizeof(uint32_t),
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
+	}
+
+	{
+		auto& uniqueVertIndexBuffer = m_uniqueVertIndexBuffers[0][NAIVE_MS];
+		uniqueVertIndexBuffer = StructuredBuffer::MakeUnique();
+		N_RETURN(uniqueVertIndexBuffer->Create(m_device, numIndices, sizeof(uint32_t),
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
+	}
+
+	{
+		auto& primitiveIndexBuffer = m_primitiveIndexBuffers[0][NAIVE_MS];
+		primitiveIndexBuffer = StructuredBuffer::MakeUnique();
+		N_RETURN(primitiveIndexBuffer->Create(m_device, numIndices / 3, sizeof(PackedTriangle),
+			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
+	}
+
+	return true;
+}
+
+bool Renderer::createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts,
+	uint32_t stride, const uint8_t* pVertData, uint32_t numIndices,
+	const uint32_t* pIndexData, vector<Resource>& uploaders)
+{
+	vector<XMFLOAT3> positions(numVerts);
+	for (auto i = 0u; i < numVerts; ++i)
+		positions[i] = reinterpret_cast<const XMFLOAT3&>(pVertData[stride * i]);
+
+	vector<Subset> meshletSubsets;
+	vector<Meshlet> meshlets;
+	vector<uint8_t> uniqueVertexIndices;
+	vector<PackedTriangle> primitiveIndices;
+
+	const auto maxVerts = 64u;
+	const auto maxPrims = 126u;
+	V_RETURN(ComputeMeshlets(maxVerts, maxPrims, pIndexData, numIndices, positions.data(), numVerts,
+		meshletSubsets, meshlets, uniqueVertexIndices, primitiveIndices), cerr, false);
+
+	{
+		auto& meshletBuffer = m_meshletBuffers[0][PREGEN_MS];
+		meshletBuffer = StructuredBuffer::MakeUnique();
+		m_numMeshlets[0] = static_cast<uint32_t>(meshlets.size());
+		N_RETURN(meshletBuffer->Create(m_device, m_numMeshlets[0], sizeof(Meshlet),
+			ResourceFlag::NONE, MemoryType::DEFAULT), false);
+		uploaders.push_back(nullptr);
+
+		N_RETURN(meshletBuffer->Upload(pCommandList, uploaders.back(),
+			meshlets.data(), sizeof(Meshlet) * meshlets.size(),
+			0, ResourceState::NON_PIXEL_SHADER_RESOURCE), false);
+	}
+
+	{
+		auto& uniqueVertIndexBuffer = m_uniqueVertIndexBuffers[0][PREGEN_MS];
+		uniqueVertIndexBuffer = StructuredBuffer::MakeUnique();
+		N_RETURN(uniqueVertIndexBuffer->Create(m_device,
+			static_cast<uint32_t>(uniqueVertexIndices.size() / sizeof(uint32_t)),
+			sizeof(uint32_t), ResourceFlag::NONE, MemoryType::DEFAULT), false);
+		uploaders.push_back(nullptr);
+
+		N_RETURN(uniqueVertIndexBuffer->Upload(pCommandList, uploaders.back(),
+			uniqueVertexIndices.data(), uniqueVertexIndices.size(), 0,
+			ResourceState::NON_PIXEL_SHADER_RESOURCE), false);
+	}
+
+	{
+		auto& primitiveIndexBuffer = m_primitiveIndexBuffers[0][PREGEN_MS];
+		primitiveIndexBuffer = StructuredBuffer::MakeUnique();
+		N_RETURN(primitiveIndexBuffer->Create(m_device, static_cast<uint32_t>(primitiveIndices.size()),
+			sizeof(PackedTriangle), ResourceFlag::NONE, MemoryType::DEFAULT), false);
+		uploaders.push_back(nullptr);
+
+		N_RETURN(primitiveIndexBuffer->Upload(pCommandList, uploaders.back(),
+			primitiveIndices.data(), sizeof(PackedTriangle) * primitiveIndices.size(),
+			0, ResourceState::NON_PIXEL_SHADER_RESOURCE), false);
+	}
 
 	return true;
 }
@@ -179,16 +268,31 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 	// Mesh-shader
 	if (isMSSupported)
 	{
-		// Get pipeline layout
-		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
-		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
-		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
-		pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
-		pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0);
-		pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 1, 0);
-		pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
-		X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
-			PipelineLayoutFlag::NONE, L"MSBasePassLayout"), false);
+		// Naive
+		{
+			// Get pipeline layout
+			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
+			pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
+			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0);
+			pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 3, 0);
+			pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
+			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
+			X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
+				PipelineLayoutFlag::NONE, L"MSBasePassLayout"), false);
+		}
+
+		// Pre-generated
+		{
+			// Get pipeline layout
+			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
+			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
+			pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
+			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 4, 0, 0);
+			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
+			X_RETURN(m_pipelineLayouts[MESHLET_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
+				PipelineLayoutFlag::NONE, L"MeshletLayout"), false);
+		}
 	}
 
 	// Vertex-shader
@@ -211,16 +315,36 @@ bool Renderer::createPipelines(Format rtFormat, Format dsFormat, bool isMSSuppor
 	// Mesh-shader
 	if (isMSSupported)
 	{
-		N_RETURN(m_shaderPool->CreateShader(Shader::Stage::MS, MS_BASEPASS, L"MSBasePass.cso"), false);
+#if 1
+		// Naive
+		{
+			N_RETURN(m_shaderPool->CreateShader(Shader::Stage::MS, MS_BASEPASS, L"MSBasePass.cso"), false);
 
-		const auto state = MeshShader::State::MakeUnique();
-		state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
-		state->SetShader(Shader::Stage::MS, m_shaderPool->GetShader(Shader::Stage::MS, MS_BASEPASS));
-		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
-		state->OMSetNumRenderTargets(1);
-		state->OMSetRTVFormat(0, rtFormat);
-		state->OMSetDSVFormat(dsFormat);
-		X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(*m_meshShaderPipelineCache, L"MeshShaderBasePass"), false);
+			const auto state = MeshShader::State::MakeUnique();
+			state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
+			state->SetShader(Shader::Stage::MS, m_shaderPool->GetShader(Shader::Stage::MS, MS_BASEPASS));
+			state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
+			state->OMSetNumRenderTargets(1);
+			state->OMSetRTVFormat(0, rtFormat);
+			state->OMSetDSVFormat(dsFormat);
+			X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(*m_meshShaderPipelineCache, L"MeshShaderBasePass"), false);
+		}
+#endif
+
+		// Pre-generated
+		{
+			N_RETURN(m_shaderPool->CreateShader(Shader::Stage::MS, MS_MESHLET, L"MSMeshlet.cso"), false);
+
+			const auto state = MeshShader::State::MakeUnique();
+			state->SetPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
+			state->SetShader(Shader::Stage::MS, m_shaderPool->GetShader(Shader::Stage::MS, MS_MESHLET));
+			state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
+			//state->RSSetState(MeshShader::RasterizerPreset::CULL_NONE, *m_meshShaderPipelineCache);
+			state->OMSetNumRenderTargets(1);
+			state->OMSetRTVFormat(0, rtFormat);
+			state->OMSetDSVFormat(dsFormat);
+			X_RETURN(m_pipelines[MESHLET], state->GetPipeline(*m_meshShaderPipelineCache, L"Meshlet"), false);
+		}
 	}
 
 	// Vertex-shader
@@ -250,11 +374,29 @@ bool Renderer::createDescriptorTables()
 		{
 			m_indexBuffers[i]->GetSRV(),
 			m_vertexBuffers[i]->GetSRV(),
-			m_meshletIdxBuffers[i]->GetUAV()
+			//m_meshletIdxBuffers[i]->GetUAV()
+			m_meshletBuffers[i][NAIVE_MS]->GetUAV(),
+			m_uniqueVertIndexBuffers[i][NAIVE_MS]->GetUAV(),
+			m_primitiveIndexBuffers[i][NAIVE_MS]->GetUAV()
 		};
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
 		X_RETURN(m_srvUavTables[i], descriptorTable->GetCbvSrvUavTable(*m_descriptorTableCache), false);
+	}
+
+	// Vertex buffer and meshlet-index SRVs
+	for (auto i = 0u; i < NUM_MESH; ++i)
+	{
+		const Descriptor descriptors[] =
+		{
+			m_vertexBuffers[i]->GetSRV(),
+			m_meshletBuffers[i][PREGEN_MS]->GetSRV(),
+			m_uniqueVertIndexBuffers[i][PREGEN_MS]->GetSRV(),
+			m_primitiveIndexBuffers[i][PREGEN_MS]->GetSRV()
+		};
+		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
+		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
+		X_RETURN(m_srvTables[i], descriptorTable->GetCbvSrvUavTable(*m_descriptorTableCache), false);
 	}
 
 	// Create the sampler table
@@ -279,11 +421,35 @@ void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex
 	pCommandList->SetPipelineState(m_pipelines[BASEPASS_MS]);
 
 	// Record commands.
-	for (auto i = 0u; i < NUM_MESH; ++i)
+	for (auto k = 0u; k < ITER; ++k)
 	{
-		pCommandList->SetGraphics32BitConstant(CONSTANTS, m_numIndices[i] / 3);
-		pCommandList->SetGraphicsDescriptorTable(BUFFERS, m_srvUavTables[i]);
-		pCommandList->DispatchMesh(DIV_UP(m_numIndices[i], GROUP_SIZE), 1, 1);
+		for (auto i = 0u; i < NUM_MESH; ++i)
+		{
+			pCommandList->SetGraphics32BitConstant(CONSTANTS, m_numIndices[i] / 3);
+			pCommandList->SetGraphicsDescriptorTable(BUFFERS, m_srvUavTables[i]);
+			pCommandList->DispatchMesh(DIV_UP(m_numIndices[i], GROUP_SIZE), 1, 1);
+		}
+	}
+}
+
+void Renderer::renderMeshlets(Ultimate::CommandList* pCommandList, uint32_t frameIndex)
+{
+	// Set descriptor tables
+	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
+
+	// Set pipeline state
+	pCommandList->SetPipelineState(m_pipelines[MESHLET]);
+
+	// Record commands.
+	for (auto k = 0u; k < ITER; ++k)
+	{
+		for (auto i = 0u; i < NUM_MESH; ++i)
+		{
+			pCommandList->SetGraphicsDescriptorTable(BUFFERS, m_srvTables[i]);
+			pCommandList->DispatchMesh(m_numMeshlets[i], 1, 1);
+		}
 	}
 }
 
@@ -299,10 +465,13 @@ void Renderer::renderVS(CommandList* pCommandList, uint32_t frameIndex)
 
 	// Record commands.
 	pCommandList->IASetPrimitiveTopology(PrimitiveTopology::TRIANGLELIST);
-	for (auto i = 0u; i < NUM_MESH; ++i)
+	for (auto k = 0u; k < ITER; ++k)
 	{
-		pCommandList->IASetVertexBuffers(0, 1, &m_vertexBuffers[i]->GetVBV());
-		pCommandList->IASetIndexBuffer(m_indexBuffers[i]->GetIBV());
-		pCommandList->DrawIndexed(m_numIndices[i], 1, 0, 0, 0);
+		for (auto i = 0u; i < NUM_MESH; ++i)
+		{
+			pCommandList->IASetVertexBuffers(0, 1, &m_vertexBuffers[i]->GetVBV());
+			pCommandList->IASetIndexBuffer(m_indexBuffers[i]->GetIBV());
+			pCommandList->DrawIndexed(m_numIndices[i], 1, 0, 0, 0);
+		}
 	}
 }

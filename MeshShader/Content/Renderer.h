@@ -9,6 +9,16 @@
 class Renderer
 {
 public:
+	enum PipelineType
+	{
+		NAIVE_MS,
+		PREGEN_MS,
+		LEGACY,
+
+		PIPE_TYPE_COUNT,
+		MS_PIPE_COUNT = LEGACY
+	};
+
 	Renderer(const XUSG::Device& device);
 	virtual ~Renderer();
 
@@ -18,7 +28,7 @@ public:
 
 	void UpdateFrame(uint32_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
 	void Render(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex,
-		const XUSG::Descriptor& rtv, bool useMeshShader = true);
+		const XUSG::Descriptor& rtv, PipelineType pipelineType);
 
 	static const uint32_t FrameCount = 3;
 
@@ -27,6 +37,7 @@ protected:
 	{
 		BASEPASS_MS_LAYOUT,
 		BASEPASS_VS_LAYOUT,
+		MESHLET_LAYOUT,
 
 		NUM_PIPELINE_LAYOUT
 	};
@@ -35,8 +46,8 @@ protected:
 	{
 		CBV_MATRICES,
 		CBV_PER_FRAME,
-		CONSTANTS,
 		BUFFERS,
+		CONSTANTS,
 		SAMPLER
 	};
 
@@ -44,6 +55,7 @@ protected:
 	{
 		BASEPASS_MS,
 		BASEPASS_VS,
+		MESHLET,
 
 		NUM_PIPELINE
 	};
@@ -63,7 +75,8 @@ protected:
 
 	enum MeshShaderID : uint8_t
 	{
-		MS_BASEPASS
+		MS_BASEPASS,
+		MS_MESHLET
 	};
 
 	enum PixelShaderID : uint8_t
@@ -78,15 +91,19 @@ protected:
 		DirectX::XMFLOAT3X4	Normal;
 	};
 
-	bool createVB(XUSG::CommandList* pCommandList, uint32_t numVert,
+	bool createVB(XUSG::CommandList* pCommandList, uint32_t numVerts,
 		uint32_t stride, const uint8_t* pData, std::vector<XUSG::Resource>& uploaders);
 	bool createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 		const uint32_t* pData, std::vector<XUSG::Resource>& uploaders);
+	bool createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts, uint32_t stride,
+		const uint8_t* pVertData, uint32_t numIndices, const uint32_t* pIndexData,
+		std::vector<XUSG::Resource>& uploaders);
 	bool createInputLayout();
 	bool createPipelineLayouts(bool isMSSupported);
 	bool createPipelines(XUSG::Format rtFormat, XUSG::Format dsFormat, bool isMSSupported);
 	bool createDescriptorTables();
 	void renderMS(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex);
+	void renderMeshlets(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex);
 	void renderVS(XUSG::CommandList* pCommandList, uint32_t frameIndex);
 
 	const static uint32_t NUM_MESH = 1;
@@ -98,11 +115,14 @@ protected:
 	XUSG::Pipeline				m_pipelines[NUM_PIPELINE];
 
 	XUSG::DescriptorTable		m_srvUavTables[NUM_MESH];
+	XUSG::DescriptorTable		m_srvTables[NUM_MESH];
 	XUSG::DescriptorTable		m_samplerTable;
 
 	XUSG::VertexBuffer::uptr	m_vertexBuffers[NUM_MESH];
 	XUSG::IndexBuffer::uptr		m_indexBuffers[NUM_MESH];
-	XUSG::TypedBuffer::uptr		m_meshletIdxBuffers[NUM_MESH];
+	XUSG::StructuredBuffer::uptr m_meshletBuffers[NUM_MESH][MS_PIPE_COUNT];
+	XUSG::StructuredBuffer::uptr m_uniqueVertIndexBuffers[NUM_MESH][MS_PIPE_COUNT];
+	XUSG::StructuredBuffer::uptr m_primitiveIndexBuffers[NUM_MESH][MS_PIPE_COUNT];
 	XUSG::DepthStencil::uptr	m_depth;
 
 	XUSG::ConstantBuffer::uptr	m_cbMatrices;
@@ -120,4 +140,5 @@ protected:
 	DirectX::XMFLOAT2				m_viewport;
 	DirectX::XMFLOAT4				m_posScale;
 	uint32_t						m_numIndices[NUM_MESH];
+	uint32_t						m_numMeshlets[NUM_MESH];
 };

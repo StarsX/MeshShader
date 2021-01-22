@@ -112,6 +112,9 @@
     <FxCompile Include="Content\Shaders\VSBasePass.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Content\Shaders\MSMeshlet.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Content\Shaders\MeshletGen.hlsli">

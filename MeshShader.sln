@@ -4,6 +4,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 16.0.30621.155
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MeshShader", "MeshShader\MeshShader.vcxproj", "{02F05630-FD91-4859-AC6D-E09E19C60572}"
+	ProjectSection(ProjectDependencies) = postProject
+		{265611FB-24A4-4FD0-B604-CD27089FC1DA} = {265611FB-24A4-4FD0-B604-CD27089FC1DA}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12MeshletGenerator", "MeshletGenerator\D3D12MeshletGenerator.vcxproj", "{265611FB-24A4-4FD0-B604-CD27089FC1DA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +20,10 @@ Global
 		{02F05630-FD91-4859-AC6D-E09E19C60572}.Debug|x64.Build.0 = Debug|x64
 		{02F05630-FD91-4859-AC6D-E09E19C60572}.Release|x64.ActiveCfg = Release|x64
 		{02F05630-FD91-4859-AC6D-E09E19C60572}.Release|x64.Build.0 = Release|x64
+		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Debug|x64.ActiveCfg = Debug|x64
+		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Debug|x64.Build.0 = Debug|x64
+		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Release|x64.ActiveCfg = Release|x64
+		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

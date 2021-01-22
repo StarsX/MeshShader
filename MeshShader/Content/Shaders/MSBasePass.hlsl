@@ -3,7 +3,7 @@
 //--------------------------------------------------------------------------------------
 
 #define MAX_PRIM_COUNT	32
-#define GROUP_SIZE	96
+#define GROUP_SIZE		96
 #define MAX_VERT_COUNT	GROUP_SIZE
 
 #define main VSMain
@@ -23,37 +23,42 @@ void main(//uint DTid : SV_DispatchThreadID,
 	out vertices VSOut verts[MAX_VERT_COUNT])
 	//out primitives uint prims[PRIM_COUNT] : SV_PrimitiveID)
 {
-	const uint primCount = (Gid + 1) * MAX_PRIM_COUNT > g_primCount ? g_primCount % MAX_PRIM_COUNT : MAX_PRIM_COUNT;
-	const uint uniqueIdxBase = (MAX_PRIM_COUNT + MAX_VERT_COUNT + 1) * Gid;
-	const uint localIdxBase = uniqueIdxBase + primCount * 3;
-	const uint vertCountIdx = localIdxBase + primCount;
+	uint m[MeshletEntryCount];
+	const uint meshletIdx = Gid * MeshletEntryCount;
+	m[VertCount] = g_meshlets[meshletIdx + VertCount];
+	m[PrimCount] = g_meshlets[meshletIdx + PrimCount];
 
-	const uint vertexCount = g_meshletIdxBuffer[vertCountIdx];
-	//DeviceMemoryBarrierWithGroupSync();
-	
-	SetMeshOutputCounts(vertexCount, primCount);
+	SetMeshOutputCounts(m[VertCount], m[PrimCount]);
 
-	if (vertexCount == 0)
+	if (m[VertCount] == 0)
 	{
+		m[PrimCount] = (Gid + 1) * MAX_PRIM_COUNT > g_primCount ? g_primCount % MAX_PRIM_COUNT : MAX_PRIM_COUNT;
+
 		// Generate meshlet
-		if (GTid < primCount * 3)
-			GenerateMeshlet(GTid, Gid, primCount, localIdxBase, uniqueIdxBase, vertCountIdx);
+		if (GTid < m[PrimCount] * 3)
+		{
+			m[PrimOffset] = m[PrimCount] * Gid;
+			m[VertOffset] = m[PrimOffset] * 3;
+			GenerateMeshlet(GTid, Gid, m);
+		}
 	}
 	else
 	{
 		// Meshlet generated
-		if (GTid < vertexCount)
+		if (GTid < m[VertCount])
 		{
 			// Vertex processing
-			const uint vid = g_meshletIdxBuffer[uniqueIdxBase + GTid];
+			m[VertOffset] = g_meshlets[meshletIdx + VertOffset];
+			const uint vid = g_uniqueVertexIndices[m[VertOffset] + GTid];
 			const VSIn input = g_vertexBuffer[vid];
 			verts[GTid] = VSMain(input, vid);
 		}
 
-		if (GTid < primCount)
+		if (GTid < m[PrimCount])
 		{
 			// Index processing
-			const uint prim = g_meshletIdxBuffer[localIdxBase + GTid];
+			m[PrimOffset] = g_meshlets[meshletIdx + PrimOffset];
+			const uint prim = g_primitiveIndices[m[PrimOffset] + GTid];
 			tris[GTid] = uint3(prim & 0x3FF, (prim >> 10) & 0x3FF, (prim >> 20) & 0x3FF);
 		}
 	}

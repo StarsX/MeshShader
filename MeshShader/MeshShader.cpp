@@ -23,7 +23,7 @@ MeshShaderX::MeshShaderX(uint32_t width, uint32_t height, std::wstring name) :
 	m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
 	m_scissorRect(0, 0, static_cast<long>(width), static_cast<long>(height)),
 	m_isMSSupported(false),
-	m_useMeshShader(true),
+	m_pipelineType(Renderer::PREGEN_MS),
 	m_showFPS(true),
 	m_pausing(false),
 	m_tracking(false),
@@ -94,7 +94,7 @@ void MeshShaderX::LoadPipeline()
 	D3D12_FEATURE_DATA_D3D12_OPTIONS7 featureData = {};
 	hr = m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &featureData, sizeof(featureData));
 	if (SUCCEEDED(hr) && featureData.MeshShaderTier) m_isMSSupported = true;
-	m_useMeshShader = m_useMeshShader && m_isMSSupported;
+	m_pipelineType = m_isMSSupported ? m_pipelineType : Renderer::LEGACY;
 
 	// Create the command queue.
 	N_RETURN(m_device->GetCommandQueue(m_commandQueue, CommandListType::DIRECT, CommandQueueFlag::NONE), ThrowIfFailed(E_FAIL));
@@ -242,7 +242,8 @@ void MeshShaderX::OnKeyUp(uint8_t key)
 		m_showFPS = !m_showFPS;
 		break;
 	case 'P':
-		m_useMeshShader = !m_useMeshShader && m_isMSSupported;
+		m_pipelineType = static_cast<Renderer::PipelineType>((m_pipelineType + 1) % Renderer::PIPE_TYPE_COUNT);
+		m_pipelineType = m_isMSSupported ? m_pipelineType : Renderer::LEGACY;
 		break;
 	}
 }
@@ -356,7 +357,7 @@ void MeshShaderX::PopulateCommandList()
 	pCommandList->ClearRenderTargetView(m_renderTargets[m_frameIndex]->GetRTV(), clearColor);
 
 	// Rendering
-	m_renderer->Render(pCommandList, m_frameIndex, m_renderTargets[m_frameIndex]->GetRTV(), m_useMeshShader);
+	m_renderer->Render(pCommandList, m_frameIndex, m_renderTargets[m_frameIndex]->GetRTV(), m_pipelineType);
 
 	// Indicate that the back buffer will now be used to present.
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(&barrier, ResourceState::PRESENT);
@@ -419,7 +420,19 @@ double MeshShaderX::CalculateFrameStats(float* pTimeStep)
 		windowText << L"    fps: ";
 		if (m_showFPS) windowText << setprecision(2) << fixed << fps;
 		else windowText << L"[F1]";
-		windowText << L"    [P] " << (m_useMeshShader ? "Mesh-shader pipeline" : "IA-graphics pipeline");
+
+		windowText << L"    [P] ";
+		switch (m_pipelineType)
+		{
+		case Renderer::NAIVE_MS:
+			windowText << L"Naive mesh-shader pipeline";
+			break;
+		case Renderer::PREGEN_MS:
+			windowText << L"Pre-generated mesh-shader pipeline";
+			break;
+		default:
+			windowText << L"IA-graphics pipeline";
+		}
 		SetCustomWindowText(windowText.str().c_str());
 	}
 
