@@ -2,9 +2,9 @@
 // Copyright (c) XU, Tianchen. All rights reserved.
 //--------------------------------------------------------------------------------------
 
-#define MAX_PRIM_COUNT	32
-#define GROUP_SIZE		96
-#define MAX_VERT_COUNT	GROUP_SIZE
+#define MAX_PRIMS	32
+#define GROUP_SIZE	96
+#define MAX_VERTS	GROUP_SIZE
 
 #define main VSMain
 #include "VSBasePass.hlsl"
@@ -19,9 +19,9 @@
 void main(//uint DTid : SV_DispatchThreadID,
 	uint GTid : SV_GroupThreadID,
 	uint Gid : SV_GroupID,
-	out indices uint3 tris[MAX_PRIM_COUNT],
-	out vertices VSOut verts[MAX_VERT_COUNT])
-	//out primitives uint prims[PRIM_COUNT] : SV_PrimitiveID)
+	out indices uint3 tris[MAX_PRIMS],
+	out vertices VSOut verts[MAX_VERTS])
+	//out primitives uint prims[MAX_PRIMS] : SV_PrimitiveID)
 {
 	uint m[MeshletEntryCount];
 	const uint meshletIdx = Gid * MeshletEntryCount;
@@ -32,12 +32,12 @@ void main(//uint DTid : SV_DispatchThreadID,
 
 	if (m[VertCount] == 0)
 	{
-		m[PrimCount] = (Gid + 1) * MAX_PRIM_COUNT > g_primCount ? g_primCount % MAX_PRIM_COUNT : MAX_PRIM_COUNT;
+		m[PrimCount] = (Gid + 1) * MAX_PRIMS > g_primCount ? g_primCount % MAX_PRIMS : MAX_PRIMS;
 
 		// Generate meshlet
 		if (GTid < m[PrimCount] * 3)
 		{
-			m[PrimOffset] = m[PrimCount] * Gid;
+			m[PrimOffset] = MAX_PRIMS * Gid;
 			m[VertOffset] = m[PrimOffset] * 3;
 			GenerateMeshlet(GTid, Gid, m);
 		}

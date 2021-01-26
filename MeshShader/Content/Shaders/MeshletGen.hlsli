@@ -35,12 +35,15 @@ void GenerateMeshlet(uint gTid, uint gid, uint m[MeshletEntryCount])
 {
 	const uint meshletIdx = gid * MeshletEntryCount;
 	const uint indexIdx = m[VertOffset] + gTid;
-	g_meshlets[meshletIdx + VertOffset] = m[VertOffset];
-	g_meshlets[meshletIdx + PrimOffset] = m[PrimOffset];
-	g_meshlets[meshletIdx + PrimCount] = m[PrimCount];
+	if (!gTid)
+	{
+		g_meshlets[meshletIdx + VertOffset] = m[VertOffset];
+		g_meshlets[meshletIdx + PrimOffset] = m[PrimOffset];
+		g_meshlets[meshletIdx + PrimCount] = m[PrimCount];
+	}
 
 	// Generate meshlet
-	const uint idxBase = gid * MAX_VERT_COUNT;
+	const uint idxBase = gid * MAX_VERTS;
 	const uint vid = g_indexBuffer[idxBase + gTid];
 
 	// Seek existing index

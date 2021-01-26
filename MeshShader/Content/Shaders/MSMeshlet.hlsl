@@ -2,9 +2,9 @@
 // Copyright (c) XU, Tianchen. All rights reserved.
 //--------------------------------------------------------------------------------------
 
-#define GROUP_SIZE		128
-#define MAX_PRIM_COUNT	126
-#define MAX_VERT_COUNT	64
+#define GROUP_SIZE	128
+#define MAX_PRIMS	126
+#define MAX_VERTS	64
 
 #define main VSMain
 #include "VSBasePass.hlsl"
@@ -35,8 +35,8 @@ StructuredBuffer<uint> g_primitiveIndices;
 void main(
 	uint GTid : SV_GroupThreadID,
 	uint Gid : SV_GroupID,
-	out indices uint3 tris[MAX_PRIM_COUNT],
-	out vertices VSOut verts[MAX_VERT_COUNT])
+	out indices uint3 tris[MAX_PRIMS],
+	out vertices VSOut verts[MAX_VERTS])
 {
 	Meshlet m = g_meshlets[Gid];
 	SetMeshOutputCounts(m.VertCount, m.PrimCount);

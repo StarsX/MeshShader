@@ -8,7 +8,7 @@
 #include "D3D12MeshletGenerator.h"
 
 #define GROUP_SIZE 96
-#define ITER 1
+#define ITER 100
 
 using namespace std;
 using namespace DirectX;
