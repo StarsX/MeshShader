@@ -110,7 +110,7 @@ protected:
 
 	XUSG::Device m_device;
 
-	XUSG::InputLayout			m_inputLayout;
+	const XUSG::InputLayout*	m_pInputLayout;
 	XUSG::PipelineLayout		m_pipelineLayouts[NUM_PIPELINE_LAYOUT];
 	XUSG::Pipeline				m_pipelines[NUM_PIPELINE];
 
