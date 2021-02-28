@@ -273,8 +273,8 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
 			pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
-			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0);
-			pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 3, 0);
+			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0, DescriptorFlag::DATA_STATIC);
+			pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 3, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 			pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
 			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
 			X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
@@ -287,7 +287,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
 			pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
-			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 4, 0, 0);
+			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 4, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
 			X_RETURN(m_pipelineLayouts[MESHLET_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
 				PipelineLayoutFlag::NONE, L"MeshletLayout"), false);
