@@ -46,7 +46,7 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 
 	// Create a depth buffer
 	m_depth = DepthStencil::MakeUnique();
-	N_RETURN(m_depth->Create(m_device, width, height), false);
+	N_RETURN(m_depth->Create(m_device, width, height, Format::D24_UNORM_S8_UINT, ResourceFlag::DENY_SHADER_RESOURCE), false);
 
 	// Create pipelines
 	N_RETURN(createInputLayout(), false);
@@ -57,10 +57,6 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	m_cbMatrices = ConstantBuffer::MakeUnique();
 	N_RETURN(m_cbMatrices->Create(m_device, sizeof(CBMatrices), FrameCount, nullptr, MemoryType::UPLOAD, L"CBMatrices"), false);
 	m_cbvMatStride = static_cast<uint32_t>(reinterpret_cast<uint8_t*>(m_cbMatrices->Map(1)) - reinterpret_cast<uint8_t*>(m_cbMatrices->Map()));
-
-	m_cbPerFrame = ConstantBuffer::MakeUnique();
-	N_RETURN(m_cbPerFrame->Create(m_device, sizeof(CBMatrices), FrameCount, nullptr, MemoryType::UPLOAD, L"CBPerFrame"), false);
-	m_cbvPFStride = static_cast<uint32_t>(reinterpret_cast<uint8_t*>(m_cbPerFrame->Map(1)) - reinterpret_cast<uint8_t*>(m_cbPerFrame->Map()));
 
 	return true;
 }
@@ -91,11 +87,6 @@ void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOA
 		XMStoreFloat4x4(&pCbData->WorldViewProj, XMMatrixTranspose(worldViewProj));
 		XMStoreFloat3x4(&pCbData->World, world); // XMStoreFloat3x4 includes transpose.
 		XMStoreFloat3x4(&pCbData->Normal, world); // XMStoreFloat3x4 includes transpose.
-	}
-
-	{
-		const auto pCbData = reinterpret_cast<XMFLOAT3*>(m_cbPerFrame->Map(frameIndex));
-		*pCbData = eyePt;
 	}
 }
 
@@ -272,7 +263,6 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 			// Get pipeline layout
 			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
-			pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 3, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 			pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
@@ -286,7 +276,6 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 			// Get pipeline layout
 			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
-			pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 4, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
 			X_RETURN(m_pipelineLayouts[MESHLET_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
@@ -299,7 +288,6 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 		// Get pipeline layout
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::VS);
-		pipelineLayout->SetRootCBV(CBV_PER_FRAME, 0, 0, DescriptorFlag::DATA_STATIC, Shader::PS);
 		X_RETURN(m_pipelineLayouts[BASEPASS_VS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
 			PipelineLayoutFlag::ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, L"VSBasePassLayout"), false);
 	}
@@ -414,17 +402,21 @@ void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
 	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[BASEPASS_MS]);
 
 	// Record commands.
+	auto numPrims = 0u;
 	for (auto k = 0u; k < ITER; ++k)
 	{
 		for (auto i = 0u; i < NUM_MESH; ++i)
 		{
-			pCommandList->SetGraphics32BitConstant(CONSTANTS, m_numIndices[i] / 3);
+			if (numPrims != m_numIndices[i] / 3)
+			{
+				numPrims = m_numIndices[i] / 3;
+				pCommandList->SetGraphics32BitConstant(CONSTANTS, numPrims);
+			}
 			pCommandList->SetGraphicsDescriptorTable(BUFFERS, m_srvUavTables[i]);
 			pCommandList->DispatchMesh(DIV_UP(m_numIndices[i], GROUP_SIZE), 1, 1);
 		}
@@ -436,7 +428,6 @@ void Renderer::renderMeshlets(Ultimate::CommandList* pCommandList, uint32_t fram
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
 	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[MESHLET]);
@@ -457,7 +448,6 @@ void Renderer::renderVS(CommandList* pCommandList, uint32_t frameIndex)
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_VS_LAYOUT]);
 	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_PER_FRAME, m_cbPerFrame->GetResource(), m_cbvPFStride * frameIndex);
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[BASEPASS_VS]);

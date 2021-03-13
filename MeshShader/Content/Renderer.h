@@ -45,7 +45,6 @@ protected:
 	enum PipelineLayoutSlot : uint8_t
 	{
 		CBV_MATRICES,
-		CBV_PER_FRAME,
 		BUFFERS,
 		CONSTANTS,
 		SAMPLER
@@ -126,7 +125,6 @@ protected:
 	XUSG::DepthStencil::uptr	m_depth;
 
 	XUSG::ConstantBuffer::uptr	m_cbMatrices;
-	XUSG::ConstantBuffer::uptr	m_cbPerFrame;
 	uint32_t					m_cbvMatStride;
 	uint32_t					m_cbvPFStride;
 

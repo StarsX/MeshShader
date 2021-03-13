@@ -11,11 +11,6 @@ struct PSIn
 	float3	Nrm		: NORMAL;
 };
 
-cbuffer cbPerFrame
-{
-	float3 g_eyePt;
-};
-
 const static float3 g_lightPos = float3(1.0, 2.0, -1.0);
 const static float4 g_light = float4(1.0, 0.8, 0.6, 5.0);
 const static float4 g_ambient = float4(0.4, 0.7, 0.9, 1.6);
