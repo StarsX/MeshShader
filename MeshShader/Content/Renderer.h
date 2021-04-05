@@ -26,8 +26,8 @@ public:
 		XUSG::Format rtFormat, std::vector<XUSG::Resource>& uploaders,
 		const char* fileName, const DirectX::XMFLOAT4& posScale, bool isMSSupported);
 
-	void UpdateFrame(uint32_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
-	void Render(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex,
+	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
+	void Render(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex,
 		const XUSG::Descriptor& rtv, PipelineType pipelineType);
 
 	static const uint8_t FrameCount = 3;
@@ -101,9 +101,9 @@ protected:
 	bool createPipelineLayouts(bool isMSSupported);
 	bool createPipelines(XUSG::Format rtFormat, XUSG::Format dsFormat, bool isMSSupported);
 	bool createDescriptorTables();
-	void renderMS(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex);
-	void renderMeshlets(XUSG::Ultimate::CommandList* pCommandList, uint32_t frameIndex);
-	void renderVS(XUSG::CommandList* pCommandList, uint32_t frameIndex);
+	void renderMS(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex);
+	void renderMeshlets(XUSG::Ultimate::CommandList* pCommandList, uint8_t frameIndex);
+	void renderVS(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	const static uint32_t NUM_MESH = 1;
 

@@ -61,7 +61,7 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	return true;
 }
 
-void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOAT3& eyePt)
+void Renderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const XMFLOAT3& eyePt)
 {
 	// General matrices
 	//const auto world = XMMatrixScaling(m_bound.w, m_bound.w, m_bound.w) *
@@ -90,7 +90,7 @@ void Renderer::UpdateFrame(uint32_t frameIndex, CXMMATRIX viewProj, const XMFLOA
 	}
 }
 
-void Renderer::Render(Ultimate::CommandList* pCommandList, uint32_t frameIndex,
+void Renderer::Render(Ultimate::CommandList* pCommandList, uint8_t frameIndex,
 	const Descriptor& rtv, PipelineType pipelineType)
 {
 	const DescriptorPool descriptorPools[] =
@@ -397,7 +397,7 @@ bool Renderer::createDescriptorTables()
 	return true;
 }
 
-void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex)
+void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
@@ -423,7 +423,7 @@ void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint32_t frameIndex
 	}
 }
 
-void Renderer::renderMeshlets(Ultimate::CommandList* pCommandList, uint32_t frameIndex)
+void Renderer::renderMeshlets(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
@@ -443,7 +443,7 @@ void Renderer::renderMeshlets(Ultimate::CommandList* pCommandList, uint32_t fram
 	}
 }
 
-void Renderer::renderVS(CommandList* pCommandList, uint32_t frameIndex)
+void Renderer::renderVS(CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_VS_LAYOUT]);
