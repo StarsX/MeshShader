@@ -55,39 +55,22 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	N_RETURN(createDescriptorTables(), false);
 
 	m_cbMatrices = ConstantBuffer::MakeUnique();
-	N_RETURN(m_cbMatrices->Create(m_device, sizeof(CBMatrices), FrameCount, nullptr, MemoryType::UPLOAD, L"CBMatrices"), false);
-	m_cbvMatStride = static_cast<uint32_t>(reinterpret_cast<uint8_t*>(m_cbMatrices->Map(1)) - reinterpret_cast<uint8_t*>(m_cbMatrices->Map()));
+	N_RETURN(m_cbMatrices->Create(m_device, sizeof(CBMatrices[FrameCount]), FrameCount, nullptr, MemoryType::UPLOAD, L"CBMatrices"), false);
 
 	return true;
 }
 
 void Renderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const XMFLOAT3& eyePt)
 {
-	// General matrices
+	// Constant buffers
+	const auto pCbData = reinterpret_cast<CBMatrices*>(m_cbMatrices->Map(frameIndex));
 	//const auto world = XMMatrixScaling(m_bound.w, m_bound.w, m_bound.w) *
-		//XMMatrixTranslation(m_bound.x, m_bound.y, m_bound.z);
+	//XMMatrixTranslation(m_bound.x, m_bound.y, m_bound.z);
 	const auto world = XMMatrixScaling(m_posScale.w, m_posScale.w, m_posScale.w) *
 		XMMatrixTranslation(m_posScale.x, m_posScale.y, m_posScale.z);
-	const auto worldViewProj = world * viewProj;
-
-	// Screen space matrices
-	const auto toScreen = XMMATRIX
-	(
-		0.5f * m_viewport.x, 0.0f, 0.0f, 0.0f,
-		0.0f, -0.5f * m_viewport.y, 0.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 0.0f,
-		0.5f * m_viewport.x, 0.5f * m_viewport.y, 0.0f, 1.0f
-	);
-	const auto worldToScreen = viewProj * toScreen;
-	const auto screenToWorld = XMMatrixInverse(nullptr, worldToScreen);
-
-	// Constant buffers
-	{
-		const auto pCbData = reinterpret_cast<CBMatrices*>(m_cbMatrices->Map(frameIndex));
-		XMStoreFloat4x4(&pCbData->WorldViewProj, XMMatrixTranspose(worldViewProj));
-		XMStoreFloat3x4(&pCbData->World, world); // XMStoreFloat3x4 includes transpose.
-		XMStoreFloat3x4(&pCbData->Normal, world); // XMStoreFloat3x4 includes transpose.
-	}
+	XMStoreFloat4x4(&pCbData->WorldViewProj, XMMatrixTranspose(world * viewProj));
+	XMStoreFloat3x4(&pCbData->World, world); // XMStoreFloat3x4 includes transpose.
+	XMStoreFloat3x4(&pCbData->Normal, world); // XMStoreFloat3x4 includes transpose.
 }
 
 void Renderer::Render(Ultimate::CommandList* pCommandList, uint8_t frameIndex,
@@ -262,7 +245,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 		{
 			// Get pipeline layout
 			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
-			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
+			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, Shader::MS);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 3, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
 			pipelineLayout->SetConstants(CONSTANTS, SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
@@ -275,7 +258,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 		{
 			// Get pipeline layout
 			const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
-			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::MS);
+			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, Shader::MS);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 4, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
 			X_RETURN(m_pipelineLayouts[MESHLET_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
@@ -287,7 +270,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 	{
 		// Get pipeline layout
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
-		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, DescriptorFlag::DATA_STATIC, Shader::VS);
+		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, Shader::VS);
 		X_RETURN(m_pipelineLayouts[BASEPASS_VS_LAYOUT], pipelineLayout->GetPipelineLayout(*m_pipelineLayoutCache,
 			PipelineLayoutFlag::ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, L"VSBasePassLayout"), false);
 	}
@@ -401,7 +384,7 @@ void Renderer::renderMS(Ultimate::CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbMatrices->GetCBVOffset(frameIndex));
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[BASEPASS_MS]);
@@ -427,7 +410,7 @@ void Renderer::renderMeshlets(Ultimate::CommandList* pCommandList, uint8_t frame
 {
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbMatrices->GetCBVOffset(frameIndex));
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[MESHLET]);
@@ -447,7 +430,7 @@ void Renderer::renderVS(CommandList* pCommandList, uint8_t frameIndex)
 {
 	// Set descriptor tables
 	pCommandList->SetGraphicsPipelineLayout(m_pipelineLayouts[BASEPASS_VS_LAYOUT]);
-	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbvMatStride * frameIndex);
+	pCommandList->SetGraphicsRootConstantBufferView(CBV_MATRICES, m_cbMatrices->GetResource(), m_cbMatrices->GetCBVOffset(frameIndex));
 
 	// Set pipeline state
 	pCommandList->SetPipelineState(m_pipelines[BASEPASS_VS]);

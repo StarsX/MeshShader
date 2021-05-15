@@ -125,8 +125,6 @@ protected:
 	XUSG::DepthStencil::uptr	m_depth;
 
 	XUSG::ConstantBuffer::uptr	m_cbMatrices;
-	uint32_t					m_cbvMatStride;
-	uint32_t					m_cbvPFStride;
 
 	XUSG::ShaderPool::uptr					m_shaderPool;
 	XUSG::Graphics::PipelineCache::uptr		m_graphicsPipelineCache;
