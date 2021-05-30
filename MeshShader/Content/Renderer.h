@@ -19,11 +19,11 @@ public:
 		MS_PIPE_COUNT = LEGACY
 	};
 
-	Renderer(const XUSG::Device& device);
+	Renderer(const XUSG::Device::sptr& device);
 	virtual ~Renderer();
 
 	bool Init(XUSG::CommandList* pCommandList, uint32_t width, uint32_t height,
-		XUSG::Format rtFormat, std::vector<XUSG::Resource>& uploaders,
+		XUSG::Format rtFormat, std::vector<XUSG::Resource::uptr>& uploaders,
 		const char* fileName, const DirectX::XMFLOAT4& posScale, bool isMSSupported);
 
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
@@ -91,12 +91,12 @@ protected:
 	};
 
 	bool createVB(XUSG::CommandList* pCommandList, uint32_t numVerts,
-		uint32_t stride, const uint8_t* pData, std::vector<XUSG::Resource>& uploaders);
+		uint32_t stride, const uint8_t* pData, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
-		const uint32_t* pData, std::vector<XUSG::Resource>& uploaders);
+		const uint32_t* pData, std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts, uint32_t stride,
 		const uint8_t* pVertData, uint32_t numIndices, const uint32_t* pIndexData,
-		std::vector<XUSG::Resource>& uploaders);
+		std::vector<XUSG::Resource::uptr>& uploaders);
 	bool createInputLayout();
 	bool createPipelineLayouts(bool isMSSupported);
 	bool createPipelines(XUSG::Format rtFormat, XUSG::Format dsFormat, bool isMSSupported);
@@ -107,7 +107,7 @@ protected:
 
 	const static uint32_t NUM_MESH = 1;
 
-	XUSG::Device m_device;
+	XUSG::Device::sptr m_device;
 
 	const XUSG::InputLayout*	m_pInputLayout;
 	XUSG::PipelineLayout		m_pipelineLayouts[NUM_PIPELINE_LAYOUT];
