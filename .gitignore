@@ -307,5 +307,5 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-!XUSG*.pdb
-D3D12MeshletGenerator.lib
+!XUSG.pdb
+!Bin/*/*.[Oo]bj

@@ -1,1 +1,1 @@
-start MeshShader.exe -mesh Media/dragon.obj
+start MeshShader.exe -mesh Assets/dragon.obj
