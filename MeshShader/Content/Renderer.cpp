@@ -18,15 +18,9 @@ using namespace std;
 using namespace DirectX;
 using namespace XUSG;
 
-Renderer::Renderer(const Device::sptr& device) :
-	m_device(device)
+Renderer::Renderer()
 {
 	m_shaderPool = ShaderPool::MakeUnique();
-	m_graphicsPipelineCache = Graphics::PipelineCache::MakeUnique(device.get());
-	m_computePipelineCache = Compute::PipelineCache::MakeUnique(device.get());
-	m_meshShaderPipelineCache = MeshShader::PipelineCache::MakeUnique(device.get());
-	m_pipelineLayoutCache = PipelineLayoutCache::MakeUnique(device.get());
-	m_descriptorTableCache = DescriptorTableCache::MakeUnique(device.get(), L"DescriptorTableCache");
 }
 
 Renderer::~Renderer()
@@ -36,6 +30,13 @@ Renderer::~Renderer()
 bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, Format rtFormat,
 	vector<Resource::uptr>& uploaders, const char* fileName, const XMFLOAT4& posScale, bool isMSSupported)
 {
+	const auto pDevice = pCommandList->GetDevice();
+	m_graphicsPipelineCache = Graphics::PipelineCache::MakeUnique(pDevice);
+	m_computePipelineCache = Compute::PipelineCache::MakeUnique(pDevice);
+	m_meshShaderPipelineCache = MeshShader::PipelineCache::MakeUnique(pDevice);
+	m_pipelineLayoutCache = PipelineLayoutCache::MakeUnique(pDevice);
+	m_descriptorTableCache = DescriptorTableCache::MakeUnique(pDevice, L"DescriptorTableCache");
+
 	m_viewport.x = static_cast<float>(width);
 	m_viewport.y = static_cast<float>(height);
 	m_posScale = posScale;
@@ -50,7 +51,7 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 
 	// Create a depth buffer
 	m_depth = DepthStencil::MakeUnique();
-	N_RETURN(m_depth->Create(m_device.get(), width, height, Format::D24_UNORM_S8_UINT, ResourceFlag::DENY_SHADER_RESOURCE), false);
+	N_RETURN(m_depth->Create(pDevice, width, height, Format::D24_UNORM_S8_UINT, ResourceFlag::DENY_SHADER_RESOURCE), false);
 
 	// Create pipelines
 	N_RETURN(createInputLayout(), false);
@@ -59,7 +60,7 @@ bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, 
 	N_RETURN(createDescriptorTables(), false);
 
 	m_cbMatrices = ConstantBuffer::MakeUnique();
-	N_RETURN(m_cbMatrices->Create(m_device.get(), sizeof(CBMatrices[FrameCount]), FrameCount,
+	N_RETURN(m_cbMatrices->Create(pDevice, sizeof(CBMatrices[FrameCount]), FrameCount,
 		nullptr, MemoryType::UPLOAD, MemoryFlag::NONE, L"CBMatrices"), false);
 
 	return true;
@@ -117,7 +118,7 @@ bool Renderer::createVB(XUSG::CommandList* pCommandList, uint32_t numVerts,
 {
 	auto& vertexBuffer = m_vertexBuffers[0];
 	vertexBuffer = VertexBuffer::MakeUnique();
-	N_RETURN(vertexBuffer->Create(m_device.get(), numVerts, stride,
+	N_RETURN(vertexBuffer->Create(pCommandList->GetDevice(), numVerts, stride,
 		ResourceFlag::NONE, MemoryType::DEFAULT), false);
 	uploaders.emplace_back(Resource::MakeUnique());
 
@@ -130,12 +131,13 @@ bool Renderer::createVB(XUSG::CommandList* pCommandList, uint32_t numVerts,
 bool Renderer::createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 	const uint32_t* pData, vector<Resource::uptr>& uploaders)
 {
+	const auto pDevice = pCommandList->GetDevice();
 	m_numIndices[0] = numIndices;
 	const uint32_t byteWidth = sizeof(uint32_t) * numIndices;
 
 	auto& indexBuffer = m_indexBuffers[0];
 	indexBuffer = IndexBuffer::MakeUnique();
-	N_RETURN(indexBuffer->Create(m_device.get(), byteWidth, Format::R32_UINT,
+	N_RETURN(indexBuffer->Create(pDevice, byteWidth, Format::R32_UINT,
 		ResourceFlag::NONE, MemoryType::DEFAULT), false);
 	uploaders.emplace_back(Resource::MakeUnique());
 
@@ -147,21 +149,21 @@ bool Renderer::createIB(XUSG::CommandList* pCommandList, uint32_t numIndices,
 		meshletBuffer = StructuredBuffer::MakeUnique();
 		const auto numMeshlets = DIV_UP(numIndices, GROUP_SIZE);
 		const uint32_t numMembers = sizeof(Meshlet) / sizeof(uint32_t);
-		N_RETURN(meshletBuffer->Create(m_device.get(), numMembers * numMeshlets, sizeof(uint32_t),
+		N_RETURN(meshletBuffer->Create(pDevice, numMembers * numMeshlets, sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
 	}
 
 	{
 		auto& uniqueVertIndexBuffer = m_uniqueVertIndexBuffers[0][NAIVE_MS];
 		uniqueVertIndexBuffer = StructuredBuffer::MakeUnique();
-		N_RETURN(uniqueVertIndexBuffer->Create(m_device.get(), numIndices, sizeof(uint32_t),
+		N_RETURN(uniqueVertIndexBuffer->Create(pDevice, numIndices, sizeof(uint32_t),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
 	}
 
 	{
 		auto& primitiveIndexBuffer = m_primitiveIndexBuffers[0][NAIVE_MS];
 		primitiveIndexBuffer = StructuredBuffer::MakeUnique();
-		N_RETURN(primitiveIndexBuffer->Create(m_device.get(), numIndices / 3, sizeof(PackedTriangle),
+		N_RETURN(primitiveIndexBuffer->Create(pDevice, numIndices / 3, sizeof(PackedTriangle),
 			ResourceFlag::ALLOW_UNORDERED_ACCESS, MemoryType::DEFAULT), false);
 	}
 
@@ -172,6 +174,8 @@ bool Renderer::createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts
 	uint32_t stride, const uint8_t* pVertData, uint32_t numIndices,
 	const uint32_t* pIndexData, vector<Resource::uptr>& uploaders)
 {
+	const auto pDevice = pCommandList->GetDevice();
+
 	vector<XMFLOAT3> positions(numVerts);
 	for (auto i = 0u; i < numVerts; ++i)
 		positions[i] = reinterpret_cast<const XMFLOAT3&>(pVertData[stride * i]);
@@ -190,7 +194,7 @@ bool Renderer::createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts
 		auto& meshletBuffer = m_meshletBuffers[0][PREGEN_MS];
 		meshletBuffer = StructuredBuffer::MakeUnique();
 		m_numMeshlets[0] = static_cast<uint32_t>(meshlets.size());
-		N_RETURN(meshletBuffer->Create(m_device.get(), m_numMeshlets[0], sizeof(Meshlet),
+		N_RETURN(meshletBuffer->Create(pDevice, m_numMeshlets[0], sizeof(Meshlet),
 			ResourceFlag::NONE, MemoryType::DEFAULT), false);
 		uploaders.emplace_back(Resource::MakeUnique());
 
@@ -202,7 +206,7 @@ bool Renderer::createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts
 	{
 		auto& uniqueVertIndexBuffer = m_uniqueVertIndexBuffers[0][PREGEN_MS];
 		uniqueVertIndexBuffer = StructuredBuffer::MakeUnique();
-		N_RETURN(uniqueVertIndexBuffer->Create(m_device.get(),
+		N_RETURN(uniqueVertIndexBuffer->Create(pDevice,
 			static_cast<uint32_t>(uniqueVertexIndices.size() / sizeof(uint32_t)),
 			sizeof(uint32_t), ResourceFlag::NONE, MemoryType::DEFAULT), false);
 		uploaders.emplace_back(Resource::MakeUnique());
@@ -215,7 +219,7 @@ bool Renderer::createMeshlets(XUSG::CommandList* pCommandList, uint32_t numVerts
 	{
 		auto& primitiveIndexBuffer = m_primitiveIndexBuffers[0][PREGEN_MS];
 		primitiveIndexBuffer = StructuredBuffer::MakeUnique();
-		N_RETURN(primitiveIndexBuffer->Create(m_device.get(), static_cast<uint32_t>(primitiveIndices.size()),
+		N_RETURN(primitiveIndexBuffer->Create(pDevice, static_cast<uint32_t>(primitiveIndices.size()),
 			sizeof(PackedTriangle), ResourceFlag::NONE, MemoryType::DEFAULT), false);
 		uploaders.emplace_back(Resource::MakeUnique());
 

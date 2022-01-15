@@ -85,7 +85,7 @@ void MeshShaderX::LoadPipeline()
 		dxgiAdapter = nullptr;
 		ThrowIfFailed(factory->EnumAdapters1(i, &dxgiAdapter));
 
-		m_device = Device::MakeShared();
+		m_device = Device::MakeUnique();
 		hr = m_device->Create(dxgiAdapter.get(), D3D_FEATURE_LEVEL_11_0);
 	}
 
@@ -138,7 +138,7 @@ void MeshShaderX::LoadAssets()
 		m_commandAllocators[m_frameIndex].get(), nullptr), ThrowIfFailed(E_FAIL));
 	m_commandList->CreateInterface();
 	
-	m_renderer = make_unique<Renderer>(m_device);
+	m_renderer = make_unique<Renderer>();
 	if (!m_renderer) ThrowIfFailed(E_FAIL);
 
 	vector<Resource::uptr> uploaders(0);

@@ -19,7 +19,7 @@ public:
 		MS_PIPE_COUNT = LEGACY
 	};
 
-	Renderer(const XUSG::Device::sptr& device);
+	Renderer();
 	virtual ~Renderer();
 
 	bool Init(XUSG::CommandList* pCommandList, uint32_t width, uint32_t height,
@@ -106,8 +106,6 @@ protected:
 	void renderVS(XUSG::CommandList* pCommandList, uint8_t frameIndex);
 
 	const static uint32_t NUM_MESH = 1;
-
-	XUSG::Device::sptr m_device;
 
 	const XUSG::InputLayout*	m_pInputLayout;
 	XUSG::PipelineLayout		m_pipelineLayouts[NUM_PIPELINE_LAYOUT];
