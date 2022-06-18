@@ -102,12 +102,12 @@ void MeshShaderX::LoadPipeline()
 
 	// Create the command queue.
 	m_commandQueue = CommandQueue::MakeUnique();
-	N_RETURN(m_commandQueue->Create(m_device.get(), CommandListType::DIRECT, CommandQueueFlag::NONE,
+	XUSG_N_RETURN(m_commandQueue->Create(m_device.get(), CommandListType::DIRECT, CommandQueueFlag::NONE,
 		0, 0, L"CommandQueue"), ThrowIfFailed(E_FAIL));
 
 	// Describe and create the swap chain.
 	m_swapChain = SwapChain::MakeUnique();
-	N_RETURN(m_swapChain->Create(factory.get(), Win32Application::GetHwnd(), m_commandQueue.get(),
+	XUSG_N_RETURN(m_swapChain->Create(factory.get(), Win32Application::GetHwnd(), m_commandQueue.get(),
 		FrameCount, m_width, m_height, Format::R8G8B8A8_UNORM), ThrowIfFailed(E_FAIL));
 
 	// This sample does not support fullscreen transitions.
@@ -120,10 +120,10 @@ void MeshShaderX::LoadPipeline()
 	for (uint8_t n = 0; n < FrameCount; ++n)
 	{
 		m_renderTargets[n] = RenderTarget::MakeUnique();
-		N_RETURN(m_renderTargets[n]->CreateFromSwapChain(m_device.get(), m_swapChain.get(), n), ThrowIfFailed(E_FAIL));
+		XUSG_N_RETURN(m_renderTargets[n]->CreateFromSwapChain(m_device.get(), m_swapChain.get(), n), ThrowIfFailed(E_FAIL));
 
 		m_commandAllocators[n] = CommandAllocator::MakeUnique();
-		N_RETURN(m_commandAllocators[n]->Create(m_device.get(), CommandListType::DIRECT,
+		XUSG_N_RETURN(m_commandAllocators[n]->Create(m_device.get(), CommandListType::DIRECT,
 			(L"CommandAllocator" + to_wstring(n)).c_str()), ThrowIfFailed(E_FAIL));
 	}
 }
@@ -134,7 +134,7 @@ void MeshShaderX::LoadAssets()
 	// Create the command list.
 	m_commandList = Ultimate::CommandList::MakeUnique();
 	const auto pCommandList = m_commandList.get();
-	N_RETURN(pCommandList->Create(m_device.get(), 0, CommandListType::DIRECT,
+	XUSG_N_RETURN(pCommandList->Create(m_device.get(), 0, CommandListType::DIRECT,
 		m_commandAllocators[m_frameIndex].get(), nullptr), ThrowIfFailed(E_FAIL));
 	m_commandList->CreateInterface();
 	
@@ -150,7 +150,7 @@ void MeshShaderX::LoadAssets()
 		uploaders, m_meshFileName.c_str(), m_meshPosScale, m_isMSSupported)) ThrowIfFailed(E_FAIL);
 
 	// Close the command list and execute it to begin the initial GPU setup.
-	N_RETURN(pCommandList->Close(), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(pCommandList->Close(), ThrowIfFailed(E_FAIL));
 	m_commandQueue->ExecuteCommandList(pCommandList);
 
 	// Create synchronization objects and wait until assets have been uploaded to the GPU.
@@ -158,7 +158,7 @@ void MeshShaderX::LoadAssets()
 		if (!m_fence)
 		{
 			m_fence = Fence::MakeUnique();
-			N_RETURN(m_fence->Create(m_device.get(), m_fenceValues[m_frameIndex]++, FenceFlag::NONE, L"Fence"), ThrowIfFailed(E_FAIL));
+			XUSG_N_RETURN(m_fence->Create(m_device.get(), m_fenceValues[m_frameIndex]++, FenceFlag::NONE, L"Fence"), ThrowIfFailed(E_FAIL));
 		}
 
 		// Create an event handle to use for frame synchronization.
@@ -213,7 +213,7 @@ void MeshShaderX::OnRender()
 	m_commandQueue->ExecuteCommandList(m_commandList.get());
 
 	// Present the frame.
-	N_RETURN(m_swapChain->Present(0, 0), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_swapChain->Present(0, 0), ThrowIfFailed(E_FAIL));
 
 	MoveToNextFrame();
 }
@@ -337,13 +337,13 @@ void MeshShaderX::PopulateCommandList()
 	// command lists have finished execution on the GPU; apps should use 
 	// fences to determine GPU execution progress.
 	const auto pCommandAllocator = m_commandAllocators[m_frameIndex].get();
-	N_RETURN(pCommandAllocator->Reset(), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(pCommandAllocator->Reset(), ThrowIfFailed(E_FAIL));
 
 	// However, when ExecuteCommandList() is called on a particular command 
 	// list, that command list can then be reset at any time and must be before 
 	// re-recording.
 	const auto pCommandList = m_commandList.get();
-	N_RETURN(pCommandList->Reset(pCommandAllocator, nullptr), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(pCommandList->Reset(pCommandAllocator, nullptr), ThrowIfFailed(E_FAIL));
 
 	// Set resource barrier
 	ResourceBarrier barrier;
@@ -361,17 +361,17 @@ void MeshShaderX::PopulateCommandList()
 	numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(&barrier, ResourceState::PRESENT);
 	pCommandList->Barrier(numBarriers, &barrier);
 
-	N_RETURN(pCommandList->Close(), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(pCommandList->Close(), ThrowIfFailed(E_FAIL));
 }
 
 // Wait for pending GPU work to complete.
 void MeshShaderX::WaitForGpu()
 {
 	// Schedule a Signal command in the queue.
-	N_RETURN(m_commandQueue->Signal(m_fence.get(), m_fenceValues[m_frameIndex]), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_commandQueue->Signal(m_fence.get(), m_fenceValues[m_frameIndex]), ThrowIfFailed(E_FAIL));
 
 	// Wait until the fence has been processed, and increment the fence value for the current frame.
-	N_RETURN(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex]++, m_fenceEvent), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex]++, m_fenceEvent), ThrowIfFailed(E_FAIL));
 	WaitForSingleObject(m_fenceEvent, INFINITE);
 }
 
@@ -380,7 +380,7 @@ void MeshShaderX::MoveToNextFrame()
 {
 	// Schedule a Signal command in the queue.
 	const auto currentFenceValue = m_fenceValues[m_frameIndex];
-	N_RETURN(m_commandQueue->Signal(m_fence.get(), currentFenceValue), ThrowIfFailed(E_FAIL));
+	XUSG_N_RETURN(m_commandQueue->Signal(m_fence.get(), currentFenceValue), ThrowIfFailed(E_FAIL));
 
 	// Update the frame index.
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
@@ -388,7 +388,7 @@ void MeshShaderX::MoveToNextFrame()
 	// If the next frame is not ready to be rendered yet, wait until it is ready.
 	if (m_fence->GetCompletedValue() < m_fenceValues[m_frameIndex])
 	{
-		N_RETURN(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent), ThrowIfFailed(E_FAIL));
+		XUSG_N_RETURN(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent), ThrowIfFailed(E_FAIL));
 		WaitForSingleObject(m_fenceEvent, INFINITE);
 	}
 
