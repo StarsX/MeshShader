@@ -27,15 +27,16 @@ Renderer::~Renderer()
 {
 }
 
-bool Renderer::Init(CommandList* pCommandList, uint32_t width, uint32_t height, Format rtFormat,
-	vector<Resource::uptr>& uploaders, const char* fileName, const XMFLOAT4& posScale, bool isMSSupported)
+bool Renderer::Init(CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
+	uint32_t width, uint32_t height, Format rtFormat, vector<Resource::uptr>& uploaders, const char* fileName,
+	const XMFLOAT4& posScale, bool isMSSupported)
 {
 	const auto pDevice = pCommandList->GetDevice();
 	m_graphicsPipelineCache = Graphics::PipelineCache::MakeUnique(pDevice);
 	m_computePipelineCache = Compute::PipelineCache::MakeUnique(pDevice);
 	m_meshShaderPipelineCache = MeshShader::PipelineCache::MakeUnique(pDevice);
 	m_pipelineLayoutCache = PipelineLayoutCache::MakeUnique(pDevice);
-	m_descriptorTableCache = DescriptorTableCache::MakeUnique(pDevice, L"DescriptorTableCache");
+	m_descriptorTableCache = descriptorTableCache;
 
 	m_viewport.x = static_cast<float>(width);
 	m_viewport.y = static_cast<float>(height);
@@ -82,13 +83,6 @@ void Renderer::UpdateFrame(uint8_t frameIndex, CXMMATRIX viewProj, const XMFLOAT
 void Renderer::Render(Ultimate::CommandList* pCommandList, uint8_t frameIndex,
 	const Descriptor& rtv, PipelineType pipelineType)
 {
-	const DescriptorPool descriptorPools[] =
-	{
-		m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL),
-		m_descriptorTableCache->GetDescriptorPool(SAMPLER_POOL)
-	};
-	pCommandList->SetDescriptorPools(static_cast<uint32_t>(size(descriptorPools)), descriptorPools);
-
 	// Clear depth
 	pCommandList->ClearDepthStencilView(m_depth->GetDSV(), ClearFlag::DEPTH, 1.0f);
 
@@ -374,14 +368,6 @@ bool Renderer::createDescriptorTables()
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
 		XUSG_X_RETURN(m_srvTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
-	}
-
-	// Create the sampler table
-	{
-		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
-		const auto sampler = LINEAR_CLAMP;
-		descriptorTable->SetSamplers(0, 1, &sampler, m_descriptorTableCache.get());
-		XUSG_X_RETURN(m_samplerTable, descriptorTable->GetSamplerTable(m_descriptorTableCache.get()), false);
 	}
 
 	return true;

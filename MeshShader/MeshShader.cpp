@@ -126,6 +126,9 @@ void MeshShaderX::LoadPipeline()
 		XUSG_N_RETURN(m_commandAllocators[n]->Create(m_device.get(), CommandListType::DIRECT,
 			(L"CommandAllocator" + to_wstring(n)).c_str()), ThrowIfFailed(E_FAIL));
 	}
+
+	// Create descriptor table cache.
+	m_descriptorTableCache = DescriptorTableCache::MakeShared(m_device.get(), L"DescriptorTableCache");
 }
 
 // Load the sample assets.
@@ -146,7 +149,7 @@ void MeshShaderX::LoadAssets()
 	/// <Hard Code>
 	/// Resolve pso mismatch by using'D24_UNORM_S8_UINT'
 	/// </Hard Code>
-	if (!m_renderer->Init(pCommandList, m_width, m_height, m_renderTargets[0]->GetFormat(),
+	if (!m_renderer->Init(pCommandList, m_descriptorTableCache, m_width, m_height, m_renderTargets[0]->GetFormat(),
 		uploaders, m_meshFileName.c_str(), m_meshPosScale, m_isMSSupported)) ThrowIfFailed(E_FAIL);
 
 	// Close the command list and execute it to begin the initial GPU setup.
@@ -345,12 +348,16 @@ void MeshShaderX::PopulateCommandList()
 	const auto pCommandList = m_commandList.get();
 	XUSG_N_RETURN(pCommandList->Reset(pCommandAllocator, nullptr), ThrowIfFailed(E_FAIL));
 
+	// Record commands.
+	// Bind the descriptor pool
+	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
+	pCommandList->SetDescriptorPools(1, &descriptorPool);
+
 	// Set resource barrier
 	ResourceBarrier barrier;
 	auto numBarriers = m_renderTargets[m_frameIndex]->SetBarrier(&barrier, ResourceState::RENDER_TARGET);
 	pCommandList->Barrier(numBarriers, &barrier);
 
-	// Record commands.
 	const float clearColor[] = { CLEAR_COLOR, 1.0f };
 	pCommandList->ClearRenderTargetView(m_renderTargets[m_frameIndex]->GetRTV(), clearColor);
 

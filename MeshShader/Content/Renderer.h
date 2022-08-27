@@ -22,8 +22,8 @@ public:
 	Renderer();
 	virtual ~Renderer();
 
-	bool Init(XUSG::CommandList* pCommandList, uint32_t width, uint32_t height,
-		XUSG::Format rtFormat, std::vector<XUSG::Resource::uptr>& uploaders,
+	bool Init(XUSG::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
+		uint32_t width, uint32_t height, XUSG::Format rtFormat, std::vector<XUSG::Resource::uptr>& uploaders,
 		const char* fileName, const DirectX::XMFLOAT4& posScale, bool isMSSupported);
 
 	void UpdateFrame(uint8_t frameIndex, DirectX::CXMMATRIX viewProj, const DirectX::XMFLOAT3& eyePt);
@@ -46,8 +46,7 @@ protected:
 	{
 		CBV_MATRICES,
 		BUFFERS,
-		CONSTANTS,
-		SAMPLER
+		CONSTANTS
 	};
 
 	enum PipelineIndex : uint8_t
@@ -113,7 +112,6 @@ protected:
 
 	XUSG::DescriptorTable		m_srvUavTables[NUM_MESH];
 	XUSG::DescriptorTable		m_srvTables[NUM_MESH];
-	XUSG::DescriptorTable		m_samplerTable;
 
 	XUSG::VertexBuffer::uptr	m_vertexBuffers[NUM_MESH];
 	XUSG::IndexBuffer::uptr		m_indexBuffers[NUM_MESH];
@@ -129,7 +127,7 @@ protected:
 	XUSG::Compute::PipelineCache::uptr		m_computePipelineCache;
 	XUSG::MeshShader::PipelineCache::uptr	m_meshShaderPipelineCache;
 	XUSG::PipelineLayoutCache::uptr			m_pipelineLayoutCache;
-	XUSG::DescriptorTableCache::uptr		m_descriptorTableCache;
+	XUSG::DescriptorTableCache::sptr		m_descriptorTableCache;
 
 	DirectX::XMFLOAT2				m_viewport;
 	DirectX::XMFLOAT4				m_posScale;
