@@ -22,7 +22,7 @@ public:
 	Renderer();
 	virtual ~Renderer();
 
-	bool Init(XUSG::CommandList* pCommandList, const XUSG::DescriptorTableCache::sptr& descriptorTableCache,
+	bool Init(XUSG::CommandList* pCommandList, const XUSG::DescriptorTableLib::sptr& descriptorTableLib,
 		uint32_t width, uint32_t height, XUSG::Format rtFormat, std::vector<XUSG::Resource::uptr>& uploaders,
 		const char* fileName, const DirectX::XMFLOAT4& posScale, bool isMSSupported);
 
@@ -122,15 +122,15 @@ protected:
 
 	XUSG::ConstantBuffer::uptr	m_cbMatrices;
 
-	XUSG::ShaderPool::uptr					m_shaderPool;
-	XUSG::Graphics::PipelineCache::uptr		m_graphicsPipelineCache;
-	XUSG::Compute::PipelineCache::uptr		m_computePipelineCache;
-	XUSG::MeshShader::PipelineCache::uptr	m_meshShaderPipelineCache;
-	XUSG::PipelineLayoutCache::uptr			m_pipelineLayoutCache;
-	XUSG::DescriptorTableCache::sptr		m_descriptorTableCache;
+	XUSG::ShaderLib::uptr				m_shaderLib;
+	XUSG::Graphics::PipelineLib::uptr	m_graphicsPipelineLib;
+	XUSG::Compute::PipelineLib::uptr	m_computePipelineLib;
+	XUSG::MeshShader::PipelineLib::uptr	m_meshShaderPipelineLib;
+	XUSG::PipelineLayoutLib::uptr		m_pipelineLayoutLib;
+	XUSG::DescriptorTableLib::sptr		m_descriptorTableLib;
 
-	DirectX::XMFLOAT2				m_viewport;
-	DirectX::XMFLOAT4				m_posScale;
-	uint32_t						m_numIndices[NUM_MESH];
-	uint32_t						m_numMeshlets[NUM_MESH];
+	DirectX::XMFLOAT2	m_viewport;
+	DirectX::XMFLOAT4	m_posScale;
+	uint32_t			m_numIndices[NUM_MESH];
+	uint32_t			m_numMeshlets[NUM_MESH];
 };

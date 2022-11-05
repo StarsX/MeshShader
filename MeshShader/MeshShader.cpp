@@ -127,8 +127,8 @@ void MeshShaderX::LoadPipeline()
 			(L"CommandAllocator" + to_wstring(n)).c_str()), ThrowIfFailed(E_FAIL));
 	}
 
-	// Create descriptor table cache.
-	m_descriptorTableCache = DescriptorTableCache::MakeShared(m_device.get(), L"DescriptorTableCache");
+	// Create descriptor-table lib.
+	m_descriptorTableLib = DescriptorTableLib::MakeShared(m_device.get(), L"DescriptorTableLib");
 }
 
 // Load the sample assets.
@@ -149,7 +149,7 @@ void MeshShaderX::LoadAssets()
 	/// <Hard Code>
 	/// Resolve pso mismatch by using'D24_UNORM_S8_UINT'
 	/// </Hard Code>
-	if (!m_renderer->Init(pCommandList, m_descriptorTableCache, m_width, m_height, m_renderTargets[0]->GetFormat(),
+	if (!m_renderer->Init(pCommandList, m_descriptorTableLib, m_width, m_height, m_renderTargets[0]->GetFormat(),
 		uploaders, m_meshFileName.c_str(), m_meshPosScale, m_isMSSupported)) ThrowIfFailed(E_FAIL);
 
 	// Close the command list and execute it to begin the initial GPU setup.
@@ -350,7 +350,7 @@ void MeshShaderX::PopulateCommandList()
 
 	// Record commands.
 	// Bind the descriptor pool
-	const auto descriptorPool = m_descriptorTableCache->GetDescriptorPool(CBV_SRV_UAV_POOL);
+	const auto descriptorPool = m_descriptorTableLib->GetDescriptorPool(CBV_SRV_UAV_POOL);
 	pCommandList->SetDescriptorPools(1, &descriptorPool);
 
 	// Set resource barrier

@@ -20,23 +20,23 @@ using namespace XUSG;
 
 Renderer::Renderer()
 {
-	m_shaderPool = ShaderPool::MakeUnique();
+	m_shaderLib = ShaderLib::MakeUnique();
 }
 
 Renderer::~Renderer()
 {
 }
 
-bool Renderer::Init(CommandList* pCommandList, const DescriptorTableCache::sptr& descriptorTableCache,
+bool Renderer::Init(CommandList* pCommandList, const DescriptorTableLib::sptr& descriptorTableLib,
 	uint32_t width, uint32_t height, Format rtFormat, vector<Resource::uptr>& uploaders, const char* fileName,
 	const XMFLOAT4& posScale, bool isMSSupported)
 {
 	const auto pDevice = pCommandList->GetDevice();
-	m_graphicsPipelineCache = Graphics::PipelineCache::MakeUnique(pDevice);
-	m_computePipelineCache = Compute::PipelineCache::MakeUnique(pDevice);
-	m_meshShaderPipelineCache = MeshShader::PipelineCache::MakeUnique(pDevice);
-	m_pipelineLayoutCache = PipelineLayoutCache::MakeUnique(pDevice);
-	m_descriptorTableCache = descriptorTableCache;
+	m_graphicsPipelineLib = Graphics::PipelineLib::MakeUnique(pDevice);
+	m_computePipelineLib = Compute::PipelineLib::MakeUnique(pDevice);
+	m_meshShaderPipelineLib = MeshShader::PipelineLib::MakeUnique(pDevice);
+	m_pipelineLayoutLib = PipelineLayoutLib::MakeUnique(pDevice);
+	m_descriptorTableLib = descriptorTableLib;
 
 	m_viewport.x = static_cast<float>(width);
 	m_viewport.y = static_cast<float>(height);
@@ -234,7 +234,7 @@ bool Renderer::createInputLayout()
 		{ "NORMAL",		0, Format::R32G32B32_FLOAT, 0, XUSG_APPEND_ALIGNED_ELEMENT,	InputClassification::PER_VERTEX_DATA, 0 }
 	};
 
-	XUSG_X_RETURN(m_pInputLayout, m_graphicsPipelineCache->CreateInputLayout(inputElements, static_cast<uint32_t>(size(inputElements))), false);
+	XUSG_X_RETURN(m_pInputLayout, m_graphicsPipelineLib->CreateInputLayout(inputElements, static_cast<uint32_t>(size(inputElements))), false);
 
 	return true;
 }
@@ -251,9 +251,9 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, Shader::MS);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 2, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::UAV, 3, 0, 0, DescriptorFlag::DATA_STATIC_WHILE_SET_AT_EXECUTE);
-			pipelineLayout->SetConstants(CONSTANTS, XUSG_SizeOfInUint32(uint32_t), 1, 0, Shader::MS);
+			pipelineLayout->SetConstants(CONSTANTS, XUSG_UINT32_SIZE_OF(uint32_t), 1, 0, Shader::MS);
 			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
-			XUSG_X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+			XUSG_X_RETURN(m_pipelineLayouts[BASEPASS_MS_LAYOUT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
 				PipelineLayoutFlag::NONE, L"MSBasePassLayout"), false);
 		}
 
@@ -264,7 +264,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 			pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, Shader::MS);
 			pipelineLayout->SetRange(BUFFERS, DescriptorType::SRV, 4, 0, 0, DescriptorFlag::DATA_STATIC);
 			pipelineLayout->SetShaderStage(BUFFERS, Shader::MS);
-			XUSG_X_RETURN(m_pipelineLayouts[MESHLET_LAYOUT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+			XUSG_X_RETURN(m_pipelineLayouts[MESHLET_LAYOUT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
 				PipelineLayoutFlag::NONE, L"MeshletLayout"), false);
 		}
 	}
@@ -274,7 +274,7 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 		// Get pipeline layout
 		const auto pipelineLayout = Util::PipelineLayout::MakeUnique();
 		pipelineLayout->SetRootCBV(CBV_MATRICES, 0, 0, Shader::VS);
-		XUSG_X_RETURN(m_pipelineLayouts[BASEPASS_VS_LAYOUT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutCache.get(),
+		XUSG_X_RETURN(m_pipelineLayouts[BASEPASS_VS_LAYOUT], pipelineLayout->GetPipelineLayout(m_pipelineLayoutLib.get(),
 			PipelineLayoutFlag::ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT, L"VSBasePassLayout"), false);
 	}
 
@@ -283,54 +283,54 @@ bool Renderer::createPipelineLayouts(bool isMSSupported)
 
 bool Renderer::createPipelines(Format rtFormat, Format dsFormat, bool isMSSupported)
 {
-	XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::PS, PS_SIMPLE, L"PSSimpleShade.cso"), false);
+	XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::PS, PS_SIMPLE, L"PSSimpleShade.cso"), false);
 
 	// Mesh-shader
 	if (isMSSupported)
 	{
 		// Naive
 		{
-			XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::MS, MS_BASEPASS, L"MSBasePass.cso"), false);
+			XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::MS, MS_BASEPASS, L"MSBasePass.cso"), false);
 
 			const auto state = MeshShader::State::MakeUnique();
 			state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
-			state->SetShader(Shader::Stage::MS, m_shaderPool->GetShader(Shader::Stage::MS, MS_BASEPASS));
-			state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
+			state->SetShader(Shader::Stage::MS, m_shaderLib->GetShader(Shader::Stage::MS, MS_BASEPASS));
+			state->SetShader(Shader::Stage::PS, m_shaderLib->GetShader(Shader::Stage::PS, PS_SIMPLE));
 			state->OMSetNumRenderTargets(1);
 			state->OMSetRTVFormat(0, rtFormat);
 			state->OMSetDSVFormat(dsFormat);
-			XUSG_X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(m_meshShaderPipelineCache.get(), L"MeshShaderBasePass"), false);
+			XUSG_X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(m_meshShaderPipelineLib.get(), L"MeshShaderBasePass"), false);
 		}
 
 		// Pre-generated
 		{
-			XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::MS, MS_MESHLET, L"MSMeshlet.cso"), false);
+			XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::MS, MS_MESHLET, L"MSMeshlet.cso"), false);
 
 			const auto state = MeshShader::State::MakeUnique();
 			state->SetPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
-			state->SetShader(Shader::Stage::MS, m_shaderPool->GetShader(Shader::Stage::MS, MS_MESHLET));
-			state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
+			state->SetShader(Shader::Stage::MS, m_shaderLib->GetShader(Shader::Stage::MS, MS_MESHLET));
+			state->SetShader(Shader::Stage::PS, m_shaderLib->GetShader(Shader::Stage::PS, PS_SIMPLE));
 			//state->RSSetState(MeshShader::RasterizerPreset::CULL_NONE, *m_meshShaderPipelineCache);
 			state->OMSetNumRenderTargets(1);
 			state->OMSetRTVFormat(0, rtFormat);
 			state->OMSetDSVFormat(dsFormat);
-			XUSG_X_RETURN(m_pipelines[MESHLET], state->GetPipeline(m_meshShaderPipelineCache.get(), L"Meshlet"), false);
+			XUSG_X_RETURN(m_pipelines[MESHLET], state->GetPipeline(m_meshShaderPipelineLib.get(), L"Meshlet"), false);
 		}
 	}
 
 	// Vertex-shader
 	{
-		XUSG_N_RETURN(m_shaderPool->CreateShader(Shader::Stage::VS, VS_BASEPASS, L"VSBasePass.cso"), false);
+		XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::VS, VS_BASEPASS, L"VSBasePass.cso"), false);
 		
 		const auto state = Graphics::State::MakeUnique();
 		state->IASetInputLayout(m_pInputLayout);
 		state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_VS_LAYOUT]);
-		state->SetShader(Shader::Stage::VS, m_shaderPool->GetShader(Shader::Stage::VS, VS_BASEPASS));
-		state->SetShader(Shader::Stage::PS, m_shaderPool->GetShader(Shader::Stage::PS, PS_SIMPLE));
+		state->SetShader(Shader::Stage::VS, m_shaderLib->GetShader(Shader::Stage::VS, VS_BASEPASS));
+		state->SetShader(Shader::Stage::PS, m_shaderLib->GetShader(Shader::Stage::PS, PS_SIMPLE));
 		state->OMSetNumRenderTargets(1);
 		state->OMSetRTVFormat(0, rtFormat);
 		state->OMSetDSVFormat(dsFormat);
-		XUSG_X_RETURN(m_pipelines[BASEPASS_VS], state->GetPipeline(m_graphicsPipelineCache.get(), L"VertexShaderBasePass"), false);
+		XUSG_X_RETURN(m_pipelines[BASEPASS_VS], state->GetPipeline(m_graphicsPipelineLib.get(), L"VertexShaderBasePass"), false);
 	}
 
 	return true;
@@ -352,7 +352,7 @@ bool Renderer::createDescriptorTables()
 		};
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
-		XUSG_X_RETURN(m_srvUavTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+		XUSG_X_RETURN(m_srvUavTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
 	}
 
 	// Vertex buffer and meshlet-index SRVs
@@ -367,7 +367,7 @@ bool Renderer::createDescriptorTables()
 		};
 		const auto descriptorTable = Util::DescriptorTable::MakeUnique();
 		descriptorTable->SetDescriptors(0, static_cast<uint32_t>(size(descriptors)), descriptors);
-		XUSG_X_RETURN(m_srvTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableCache.get()), false);
+		XUSG_X_RETURN(m_srvTables[i], descriptorTable->GetCbvSrvUavTable(m_descriptorTableLib.get()), false);
 	}
 
 	return true;
