@@ -34,7 +34,7 @@ bool Renderer::Init(CommandList* pCommandList, const DescriptorTableLib::sptr& d
 	const auto pDevice = pCommandList->GetDevice();
 	m_graphicsPipelineLib = Graphics::PipelineLib::MakeUnique(pDevice);
 	m_computePipelineLib = Compute::PipelineLib::MakeUnique(pDevice);
-	m_meshShaderPipelineLib = MeshShader::PipelineLib::MakeUnique(pDevice);
+	m_meshPipelineLib = Ultimate::PipelineLib::MakeUnique(pDevice);
 	m_pipelineLayoutLib = PipelineLayoutLib::MakeUnique(pDevice);
 	m_descriptorTableLib = descriptorTableLib;
 
@@ -292,29 +292,29 @@ bool Renderer::createPipelines(Format rtFormat, Format dsFormat, bool isMSSuppor
 		{
 			XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::MS, MS_BASEPASS, L"MSBasePass.cso"), false);
 
-			const auto state = MeshShader::State::MakeUnique();
+			const auto state = Ultimate::State::MakeUnique();
 			state->SetPipelineLayout(m_pipelineLayouts[BASEPASS_MS_LAYOUT]);
 			state->SetShader(Shader::Stage::MS, m_shaderLib->GetShader(Shader::Stage::MS, MS_BASEPASS));
 			state->SetShader(Shader::Stage::PS, m_shaderLib->GetShader(Shader::Stage::PS, PS_SIMPLE));
 			state->OMSetNumRenderTargets(1);
 			state->OMSetRTVFormat(0, rtFormat);
 			state->OMSetDSVFormat(dsFormat);
-			XUSG_X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(m_meshShaderPipelineLib.get(), L"MeshShaderBasePass"), false);
+			XUSG_X_RETURN(m_pipelines[BASEPASS_MS], state->GetPipeline(m_meshPipelineLib.get(), L"MeshShaderBasePass"), false);
 		}
 
 		// Pre-generated
 		{
 			XUSG_N_RETURN(m_shaderLib->CreateShader(Shader::Stage::MS, MS_MESHLET, L"MSMeshlet.cso"), false);
 
-			const auto state = MeshShader::State::MakeUnique();
+			const auto state = Ultimate::State::MakeUnique();
 			state->SetPipelineLayout(m_pipelineLayouts[MESHLET_LAYOUT]);
 			state->SetShader(Shader::Stage::MS, m_shaderLib->GetShader(Shader::Stage::MS, MS_MESHLET));
 			state->SetShader(Shader::Stage::PS, m_shaderLib->GetShader(Shader::Stage::PS, PS_SIMPLE));
-			//state->RSSetState(MeshShader::RasterizerPreset::CULL_NONE, *m_meshShaderPipelineCache);
+			//state->RSSetState(Graphics::RasterizerPreset::CULL_NONE, *m_meshShaderPipelineCache);
 			state->OMSetNumRenderTargets(1);
 			state->OMSetRTVFormat(0, rtFormat);
 			state->OMSetDSVFormat(dsFormat);
-			XUSG_X_RETURN(m_pipelines[MESHLET], state->GetPipeline(m_meshShaderPipelineLib.get(), L"Meshlet"), false);
+			XUSG_X_RETURN(m_pipelines[MESHLET], state->GetPipeline(m_meshPipelineLib.get(), L"Meshlet"), false);
 		}
 	}
 
